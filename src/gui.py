@@ -4,13 +4,17 @@ import json
 import math
 from string import Template
 import requests
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QPointF
-from PyQt6.QtGui import QPainter, QColor, QFont, QPixmap, QIcon, QAction, QPolygonF, QPen
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QPointF, QEvent, QTimer, QRect
+from PyQt6.QtGui import QPainter, QColor, QFont, QPixmap, QIcon, QAction, QPolygonF, QPen, QGuiApplication
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QLineEdit, QSlider, QScrollArea, QListWidget,
-    QSpinBox, QFrame, QSizePolicy, QSpacerItem, QGraphicsDropShadowEffect
+    QSpinBox, QFrame, QSizePolicy, QSpacerItem, QGraphicsDropShadowEffect,
+    QSystemTrayIcon, QMenu,
+    QDialog, QDialogButtonBox, QFormLayout, QComboBox, QCheckBox,
+    QPlainTextEdit, QMessageBox, QListWidgetItem, QAbstractItemView
 )
+from metadata import MetadataFetcher
 
 def get_resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -249,6 +253,7 @@ QLabel#helpNote { font-size: 11px; color: $text_faint; }
 QLabel#pbLogo { border-radius: 6px; background-color: $logo_bg; }
 QLabel#pbTitle { font-size: 14px; font-weight: bold; color: $text_strong; }
 QLabel#pbDesc { font-size: 11px; color: $text_muted; }
+QLabel#pbTrack { font-size: 11px; font-weight: bold; color: #7c3aed; }
 QLabel#stateLabel { font-size: 10px; font-weight: bold; color: $text_muted; }
 /* Proxy port input */
 QSpinBox#portSpin {
@@ -278,14 +283,14 @@ QSlider::handle:horizontal {
     background: #7c3aed;
     width: 12px;
     height: 12px;
-    margin-top: -4px;
+    margin: -4px 0;
     border-radius: 6px;
 }
 QSlider::handle:horizontal:hover {
     background: #c084fc;
     width: 14px;
     height: 14px;
-    margin-top: -5px;
+    margin: -5px 0;
     border-radius: 7px;
 }
 """)
@@ -377,6 +382,237 @@ def create_star_icon(filled):
     painter.drawPolygon(star)
     painter.end()
     return pixmap
+
+def slugify(name):
+    """Turns a station name into a url-safe ascii id (e.g. 'Radio ZU' -> 'radio-zu')."""
+    import re
+    import unicodedata
+    # Strip diacritics (ă -> a, ț -> t, ...) then keep alphanumerics
+    normalized = unicodedata.normalize('NFKD', name)
+    ascii_name = normalized.encode('ascii', 'ignore').decode('ascii').lower()
+    slug = re.sub(r'[^a-z0-9]+', '-', ascii_name).strip('-')
+    return slug or 'post'
+
+
+# Content types offered in the editor; the stream's actual header still wins at playback.
+CONTENT_TYPES = ["audio/mpeg", "audio/aac", "audio/ogg", "audio/x-mpegurl"]
+
+
+class StationFormDialog(QDialog):
+    """Add/edit form for a single radio station. Returns a station dict via get_data()."""
+
+    def __init__(self, parent=None, station=None, existing_ids=None):
+        super().__init__(parent)
+        # station is None for "add", or the dict being edited for "edit".
+        self.station = station
+        self.existing_ids = existing_ids or set()
+        self.is_edit = station is not None
+
+        self.setWindowTitle("Editează postul" if self.is_edit else "Adaugă post nou")
+        self.setMinimumWidth(460)
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+
+        form = QFormLayout()
+        form.setSpacing(10)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+
+        s = self.station or {}
+
+        self.name_input = QLineEdit(s.get('name', ''), self)
+        self.name_input.setPlaceholderText("ex: Radio ZU")
+        form.addRow("Nume *", self.name_input)
+
+        self.genre_input = QLineEdit(s.get('genre', ''), self)
+        self.genre_input.setPlaceholderText("ex: Pop / Hituri")
+        form.addRow("Gen", self.genre_input)
+
+        self.desc_input = QPlainTextEdit(s.get('description', ''), self)
+        self.desc_input.setPlaceholderText("Scurtă descriere a postului")
+        self.desc_input.setFixedHeight(64)
+        form.addRow("Descriere", self.desc_input)
+
+        self.url_input = QLineEdit(s.get('url', ''), self)
+        self.url_input.setPlaceholderText("https://exemplu.ro/stream")
+        form.addRow("URL stream *", self.url_input)
+
+        self.logo_input = QLineEdit(s.get('logo') or '', self)
+        self.logo_input.setPlaceholderText("https://exemplu.ro/logo.png (opțional)")
+        form.addRow("URL logo", self.logo_input)
+
+        self.type_combo = QComboBox(self)
+        self.type_combo.setEditable(True)
+        self.type_combo.addItems(CONTENT_TYPES)
+        current_type = s.get('content_type', 'audio/mpeg')
+        if current_type in CONTENT_TYPES:
+            self.type_combo.setCurrentText(current_type)
+        else:
+            self.type_combo.setEditText(current_type)
+        form.addRow("Tip conținut", self.type_combo)
+
+        self.proxy_check = QCheckBox("Rutează prin proxy-ul local (necesar pentru unele stream-uri)", self)
+        self.proxy_check.setChecked(bool(s.get('proxy', False)))
+        form.addRow("Proxy", self.proxy_check)
+
+        layout.addLayout(form)
+
+        # OK / Cancel
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel,
+            self
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Save).setText("Salvează")
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Anulează")
+        buttons.accepted.connect(self.on_accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def on_accept(self):
+        name = self.name_input.text().strip()
+        url = self.url_input.text().strip()
+
+        if not name:
+            QMessageBox.warning(self, "Câmp obligatoriu", "Numele postului este obligatoriu.")
+            return
+        if not url:
+            QMessageBox.warning(self, "Câmp obligatoriu", "URL-ul stream-ului este obligatoriu.")
+            return
+
+        # Keep the existing id when editing; generate a unique one when adding.
+        if self.is_edit:
+            station_id = self.station['id']
+        else:
+            station_id = self._unique_id(slugify(name))
+
+        self.result_data = {
+            'id': station_id,
+            'name': name,
+            'description': self.desc_input.toPlainText().strip(),
+            'genre': self.genre_input.text().strip() or 'General',
+            'url': url,
+            'logo': self.logo_input.text().strip() or None,
+            'content_type': self.type_combo.currentText().strip() or 'audio/mpeg',
+            'proxy': self.proxy_check.isChecked(),
+        }
+        self.accept()
+
+    def _unique_id(self, base):
+        """Appends -2, -3, ... if the slug collides with an existing station id."""
+        if base not in self.existing_ids:
+            return base
+        i = 2
+        while f"{base}-{i}" in self.existing_ids:
+            i += 1
+        return f"{base}-{i}"
+
+    def get_data(self):
+        return self.result_data
+
+
+class StationManagerDialog(QDialog):
+    """Lists all stations with Add / Edit / Delete actions, delegating persistence
+    to the parent MainWindow."""
+
+    def __init__(self, window):
+        super().__init__(window)
+        self.window = window
+        self.setWindowTitle("Gestionează posturile radio")
+        self.setMinimumSize(420, 480)
+        self.init_ui()
+        self.refresh_list()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+
+        title = QLabel("Posturi radio", self)
+        title.setObjectName("appTitle")
+        layout.addWidget(title)
+
+        self.list_widget = QListWidget(self)
+        self.list_widget.setObjectName("deviceList")
+        self.list_widget.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.list_widget.itemDoubleClicked.connect(lambda *_: self.edit_selected())
+        layout.addWidget(self.list_widget)
+
+        # Action buttons
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+        self.add_btn = QPushButton("➕ Adaugă", self)
+        self.add_btn.setObjectName("scanBtn")
+        self.add_btn.clicked.connect(self.add_station)
+        btn_row.addWidget(self.add_btn)
+
+        self.edit_btn = QPushButton("✎ Editează", self)
+        self.edit_btn.clicked.connect(self.edit_selected)
+        btn_row.addWidget(self.edit_btn)
+
+        self.delete_btn = QPushButton("🗑 Șterge", self)
+        self.delete_btn.clicked.connect(self.delete_selected)
+        btn_row.addWidget(self.delete_btn)
+        layout.addLayout(btn_row)
+
+        close_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
+        close_box.button(QDialogButtonBox.StandardButton.Close).setText("Închide")
+        close_box.rejected.connect(self.accept)
+        layout.addWidget(close_box)
+
+    def refresh_list(self):
+        self.list_widget.clear()
+        for station in self.window.sorted_stations():
+            label = station.get('name', '(fără nume)')
+            genre = station.get('genre')
+            if genre:
+                label += f"  —  {genre}"
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, station['id'])
+            self.list_widget.addItem(item)
+
+    def _selected_station(self):
+        item = self.list_widget.currentItem()
+        if not item:
+            return None
+        station_id = item.data(Qt.ItemDataRole.UserRole)
+        return next((s for s in self.window.stations if s['id'] == station_id), None)
+
+    def add_station(self):
+        existing_ids = {s['id'] for s in self.window.stations}
+        dialog = StationFormDialog(self, station=None, existing_ids=existing_ids)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.window.add_station(dialog.get_data())
+            self.refresh_list()
+
+    def edit_selected(self):
+        station = self._selected_station()
+        if not station:
+            QMessageBox.information(self, "Selectează un post", "Selectează un post pentru editare.")
+            return
+        existing_ids = {s['id'] for s in self.window.stations}
+        dialog = StationFormDialog(self, station=station, existing_ids=existing_ids)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.window.update_station(station['id'], dialog.get_data())
+            self.refresh_list()
+
+    def delete_selected(self):
+        station = self._selected_station()
+        if not station:
+            QMessageBox.information(self, "Selectează un post", "Selectează un post pentru ștergere.")
+            return
+        reply = QMessageBox.question(
+            self, "Confirmă ștergerea",
+            f"Sigur vrei să ștergi „{station['name']}”?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.window.delete_station(station['id'])
+            self.refresh_list()
+
 
 class StationCard(QFrame):
     """Individual widget representing a radio station in a card layout."""
@@ -519,6 +755,7 @@ class MainWindow(QMainWindow):
 
         self.card_widgets = {}
         self.downloaders = []
+        self.metadata_fetcher = None
 
         self.setWindowTitle("RadioChromecast")
         self.setMinimumSize(1000, 700)
@@ -526,12 +763,17 @@ class MainWindow(QMainWindow):
 
         # Set window icon
         icon_path = get_resource_path("icon.png")
-        if os.path.exists(icon_path):
-            self.setWindowIcon(QIcon(icon_path))
+        self.app_icon = QIcon(icon_path) if os.path.exists(icon_path) else QIcon()
+        if not self.app_icon.isNull():
+            self.setWindowIcon(self.app_icon)
 
+        # When True, closeEvent really quits instead of hiding to the tray.
+        self._really_quit = False
 
         self.init_ui()
         self.setup_connections()
+        self.setup_tray()
+        self.restore_window_geometry()
 
         # Preselect the last played station (highlight + playbar); playback resumes
         # automatically once the Chromecast connects (see on_connection_status_changed)
@@ -689,6 +931,13 @@ class MainWindow(QMainWindow):
         self.fav_filter_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         search_layout.addWidget(self.fav_filter_btn)
 
+        # Open the CRUD manager for radio stations
+        self.manage_btn = QPushButton("⚙ Gestionează", self)
+        self.manage_btn.setObjectName("scanBtn")
+        self.manage_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.manage_btn.setToolTip("Adaugă, editează sau șterge posturi radio")
+        search_layout.addWidget(self.manage_btn)
+
         content_layout.addLayout(search_layout)
 
         # Scroll Area for station cards
@@ -740,6 +989,12 @@ class MainWindow(QMainWindow):
         self.pb_desc = QLabel("Niciun post selectat", self)
         self.pb_desc.setObjectName("pbDesc")
         text_layout.addWidget(self.pb_desc)
+
+        # "Now playing" track info from ICY stream metadata (StreamTitle).
+        self.pb_track = QLabel("", self)
+        self.pb_track.setObjectName("pbTrack")
+        self.pb_track.hide()
+        text_layout.addWidget(self.pb_track)
         text_layout.addStretch()
         details_layout.addLayout(text_layout)
         playbar_layout.addWidget(self.playbar_details)
@@ -791,6 +1046,7 @@ class MainWindow(QMainWindow):
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(int(self.current_volume * 100))
         self.volume_slider.setEnabled(False)
+        self.volume_slider.setMinimumHeight(20)
         volume_layout.addWidget(self.volume_slider)
 
         playbar_layout.addWidget(volume_widget)
@@ -857,6 +1113,9 @@ class MainWindow(QMainWindow):
         # Search filter
         self.search_input.textChanged.connect(self.apply_filters)
         self.fav_filter_btn.toggled.connect(self.apply_filters)
+
+        # Station manager (CRUD)
+        self.manage_btn.clicked.connect(self.open_station_manager)
 
         # Scan and connect
         self.scan_btn.clicked.connect(self.scan_chromecasts)
@@ -1037,6 +1296,7 @@ class MainWindow(QMainWindow):
         else:
             self.is_playing = False
             self.set_play_icon(False)
+            self.stop_metadata()
 
     def on_volume_changed_remotely(self, volume_level, volume_muted):
         self.current_volume = volume_level
@@ -1065,6 +1325,12 @@ class MainWindow(QMainWindow):
         # Update details on the playbar
         self.pb_title.setText(station_data['name'])
         self.pb_desc.setText(station_data.get('description', 'Fără descriere'))
+
+        # The track label belongs to the currently playing station; hide it when
+        # the user merely selects a different station.
+        if not self.active_station or station_data['id'] != self.active_station['id']:
+            self.pb_track.hide()
+            self.pb_track.clear()
         
         # Update logo on playbar
         if station_data['id'] in self.card_widgets:
@@ -1092,6 +1358,10 @@ class MainWindow(QMainWindow):
                 title=station_data['name']
             )
 
+            # Fetch "now playing" metadata directly from the source stream (not the
+            # proxy, which doesn't forward ICY metadata).
+            self.start_metadata(station_data['url'])
+
             # Remember the last played station for next launch
             if self.config.get('last_station') != station_data['id']:
                 self.config['last_station'] = station_data['id']
@@ -1112,6 +1382,42 @@ class MainWindow(QMainWindow):
     def volume_slider_changed(self, value):
         self.current_volume = value / 100.0
         self.cast_controller.set_volume(self.current_volume)
+
+    # --- Stream metadata ("now playing") ---
+
+    def start_metadata(self, url):
+        """Starts polling the given stream URL for ICY track metadata."""
+        self.stop_metadata()
+        self.pb_track.hide()
+        self.pb_track.clear()
+        self.metadata_fetcher = MetadataFetcher(url)
+        self.metadata_fetcher.title_changed.connect(self.on_track_title_changed)
+        self.metadata_fetcher.start()
+
+    def stop_metadata(self):
+        """Stops the active metadata fetcher thread, if any."""
+        if self.metadata_fetcher is not None:
+            self.metadata_fetcher.stop()
+            self.metadata_fetcher.wait()
+            self.metadata_fetcher = None
+        self.pb_track.hide()
+        self.pb_track.clear()
+
+    def on_track_title_changed(self, title):
+        if title:
+            self.pb_track.setText(f"♪ {title}")
+            self.pb_track.show()
+            self.notify_track(title)
+        else:
+            self.pb_track.hide()
+            self.pb_track.clear()
+
+    def notify_track(self, title):
+        """Shows a system tray notification with the newly playing track."""
+        if not self.tray or not QSystemTrayIcon.supportsMessages():
+            return
+        station_name = self.active_station['name'] if self.active_station else "RadioChromecast"
+        self.tray.showMessage(station_name, f"♪ {title}", self.app_icon, 5000)
 
     # --- Filtering and utility slots ---
 
@@ -1164,6 +1470,102 @@ class MainWindow(QMainWindow):
         self.save_favorites()
         # Reorder the grid (favorites first) and re-apply the current filter
         self.reflow_grid()
+        self.apply_filters()
+
+    # --- Station CRUD ---
+
+    def open_station_manager(self):
+        """Opens the dialog for adding, editing and deleting radio stations."""
+        StationManagerDialog(self).exec()
+
+    def save_stations(self):
+        """Persists the current station list back to stations.json (without the
+        runtime-only 'favorite' flag, which lives in favorites.json)."""
+        if not self.stations_path:
+            return
+        payload = {
+            "stations": [
+                {k: v for k, v in station.items() if k != 'favorite'}
+                for station in self.stations
+            ]
+        }
+        try:
+            with open(self.stations_path, 'w', encoding='utf-8') as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"[RadioCast] Eroare la salvarea stations.json: {e}")
+            QMessageBox.warning(self, "Eroare", f"Nu s-a putut salva lista de posturi:\n{e}")
+
+    def add_station(self, data):
+        """Adds a new station (mutating the shared list in place so the proxy sees it)."""
+        data.setdefault('favorite', False)
+        self.stations.append(data)
+        self.save_stations()
+        self.rebuild_stations_grid()
+
+    def update_station(self, station_id, data):
+        """Updates an existing station in place, preserving its favorite flag."""
+        station = next((s for s in self.stations if s.get('id') == station_id), None)
+        if station is None:
+            return
+        favorite = station.get('favorite', False)
+        station.clear()
+        station.update(data)
+        station['favorite'] = favorite
+        self.save_stations()
+        self.rebuild_stations_grid()
+
+    def delete_station(self, station_id):
+        """Removes a station and updates playback/selection state if it was in use."""
+        station = next((s for s in self.stations if s.get('id') == station_id), None)
+        if station is None:
+            return
+
+        # If the station is currently playing, stop it before removing.
+        if self.active_station and self.active_station.get('id') == station_id:
+            if self.is_playing and self.cast_controller.active_cast:
+                self.cast_controller.stop_stream()
+            self.stop_metadata()
+            self.active_station = None
+
+        # Reset the playbar if the deleted station was selected.
+        if self.selected_station and self.selected_station.get('id') == station_id:
+            self.selected_station = None
+            self.pb_title.setText("Selectează un post")
+            self.pb_desc.setText("Niciun post selectat")
+            self.pb_track.hide()
+            self.pb_track.clear()
+            self.pb_logo.setPixmap(create_fallback_logo("").scaled(
+                56, 56, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.play_btn.setEnabled(False)
+
+        self.stations.remove(station)
+        # Drop the deleted id from favorites.json too.
+        self.save_favorites()
+        self.save_stations()
+        self.rebuild_stations_grid()
+
+    def rebuild_stations_grid(self):
+        """Fully rebuilds the station grid from the current list, replacing all cards."""
+        # Stop any in-flight logo downloads tied to the old cards.
+        for downloader in self.downloaders:
+            if downloader.isRunning():
+                downloader.terminate()
+                downloader.wait()
+        self.downloaders = []
+
+        # Remove every existing card from the layout and forget them.
+        while self.grid_layout.count():
+            item = self.grid_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+        self.card_widgets = {}
+
+        # Rebuild from scratch, then restore selection highlight and active filter.
+        self.populate_grid(self.stations)
+        if self.selected_station and self.selected_station.get('id') in self.card_widgets:
+            self.card_widgets[self.selected_station['id']].set_selected(True)
         self.apply_filters()
 
     # --- Theme ---
@@ -1235,10 +1637,110 @@ class MainWindow(QMainWindow):
         if was_playing and station and station.get('proxy') and self.cast_controller.active_cast:
             self.play_station(station)
 
+    # --- Window geometry persistence ---
+
+    def restore_window_geometry(self):
+        """Restores the last saved window position and size, if it fits on a screen."""
+        geo = self.config.get('window_geometry')
+        if not isinstance(geo, dict):
+            return
+        try:
+            x, y = int(geo['x']), int(geo['y'])
+            w, h = int(geo['width']), int(geo['height'])
+        except (KeyError, TypeError, ValueError):
+            return
+
+        # Never restore smaller than the enforced minimum size.
+        w = max(w, self.minimumWidth())
+        h = max(h, self.minimumHeight())
+        rect = QRect(x, y, w, h)
+
+        # Only restore if the window would land on a currently connected screen,
+        # so a window saved on a now-disconnected monitor doesn't vanish off-screen.
+        if any(screen.availableGeometry().intersects(rect) for screen in QGuiApplication.screens()):
+            self.setGeometry(rect)
+
+    def save_window_geometry(self):
+        """Stores the current (non-maximized) window position and size to config."""
+        geo = self.normalGeometry()
+        self.config['window_geometry'] = {
+            'x': geo.x(), 'y': geo.y(),
+            'width': geo.width(), 'height': geo.height()
+        }
+        self.save_config()
+
+    # --- System tray / minimize-to-tray ---
+
+    def setup_tray(self):
+        """Creates the system tray icon so the app can keep running while hidden."""
+        self.tray = None
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+
+        self.tray = QSystemTrayIcon(self.app_icon, self)
+        self.tray.setToolTip("RadioChromecast")
+
+        menu = QMenu()
+        show_action = menu.addAction("Afișează")
+        show_action.triggered.connect(self.show_from_tray)
+        menu.addSeparator()
+        quit_action = menu.addAction("Ieșire")
+        quit_action.triggered.connect(self.quit_app)
+        self.tray.setContextMenu(menu)
+
+        self.tray.activated.connect(self.on_tray_activated)
+        self.tray.show()
+
+    def on_tray_activated(self, reason):
+        # Restore the window on a left click / double click on the tray icon.
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger,
+                      QSystemTrayIcon.ActivationReason.DoubleClick):
+            self.show_from_tray()
+
+    def show_from_tray(self):
+        """Restores and focuses the window from the tray."""
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def quit_app(self):
+        """Fully exits the application from the tray menu."""
+        self._really_quit = True
+        self.close()
+
+    def changeEvent(self, event):
+        # Hide to the tray when the window is minimized.
+        if event.type() == QEvent.Type.WindowStateChange and self.isMinimized() and self.tray:
+            event.ignore()
+            self.save_window_geometry()
+            # Defer hide() so the minimize animation doesn't leave a ghost window.
+            QTimer.singleShot(0, self.hide)
+            return
+        super().changeEvent(event)
+
     def closeEvent(self, event):
+        # Persist the current position/size before hiding or quitting.
+        self.save_window_geometry()
+
+        # Closing the window hides to the tray instead of quitting, unless the user
+        # explicitly chose "Ieșire" from the tray menu.
+        if self.tray and not self._really_quit:
+            event.ignore()
+            self.hide()
+            self.tray.showMessage(
+                "RadioChromecast",
+                "Aplicația rulează în continuare în zona de notificări.",
+                self.app_icon, 3000
+            )
+            return
+
+        # Stop the metadata polling thread before exiting
+        self.stop_metadata()
         # Gracefully stop download threads to prevent segmentation faults on exit
         for downloader in self.downloaders:
             if downloader.isRunning():
                 downloader.terminate()
                 downloader.wait()
+        if self.tray:
+            self.tray.hide()
         event.accept()

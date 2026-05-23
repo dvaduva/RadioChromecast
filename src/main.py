@@ -125,8 +125,19 @@ def main():
         sys.exit(1)
 
     # 3. Launch PyQt6 GUI Application
+    # On Windows, tray notifications inherit the host process identity (showing
+    # "Python" in dev). Setting an explicit AppUserModelID makes Windows attribute
+    # toasts/balloons to RadioChromecast instead.
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("RadioChromecast")
+        except Exception as e:
+            print(f"[RadioCast] Nu s-a putut seta AppUserModelID: {e}")
+
     app = QApplication(sys.argv)
     app.setApplicationName("RadioChromecast")
+    app.setApplicationDisplayName("RadioChromecast")
     
     cast_controller = CastController()
     
