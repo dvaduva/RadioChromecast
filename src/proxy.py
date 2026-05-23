@@ -1,8 +1,11 @@
 import socket
 import threading
 import urllib.request
+import logging
 import requests
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+
+log = logging.getLogger('radiocast.proxy')
 
 def get_local_ip():
     """Detects the computer's primary local IP address routed to the internet."""
@@ -33,55 +36,75 @@ class RadioProxyHandler(BaseHTTPRequestHandler):
         station_id = self.path.split('/')[-1]
         stations = getattr(self.server, 'stations', [])
         station = next((s for s in stations if s.get('id') == station_id), None)
-        
+
+        client = self.client_address[0] if self.client_address else '?'
+        log.info("GET %s from %s", self.path, client)
+
         if not station:
+            log.warning("Station not found for id=%r", station_id)
             self.send_error(404, "Station not found")
             return
-            
+
         target_url = station.get('url')
         content_type = station.get('content_type', 'audio/mpeg')
-        
+        log.info("[%s] upstream connect -> %s (declared CT=%s)", station_id, target_url, content_type)
+
         try:
             # We set a standard User-Agent header to bypass server blocks on default Python agents
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
-            
+
             # Stream the remote audio URL
             with requests.get(target_url, headers=headers, stream=True, timeout=10) as r:
                 r.raise_for_status()
-                
+
                 # Fetch actual Content-Type header if provided by remote server
                 remote_content_type = r.headers.get('Content-Type')
                 if remote_content_type:
                     content_type = remote_content_type
-                
+
+                log.info("[%s] upstream %s, serving CT=%s to Chromecast", station_id, r.status_code, content_type)
+
                 self.send_response(200)
                 self.send_header('Content-Type', content_type)
                 # Access-Control-Allow-Origin: * is essential for Chromecast media players (CORS)
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.send_header('Connection', 'close')
                 self.end_headers()
-                
+
                 # Forward the audio chunks to the client (Chromecast)
+                total = 0
                 for chunk in r.iter_content(chunk_size=16384): # 16KB chunks
                     if not chunk:
                         break
                     self.wfile.write(chunk)
-                    
+                    total += len(chunk)
+                log.info("[%s] upstream ended; forwarded %d bytes", station_id, total)
+
         except (ConnectionResetError, ConnectionAbortedError):
             # Normal occurrence when client (Chromecast) stops playback and closes the connection
-            pass
+            log.info("[%s] client closed the connection (normal stop)", station_id)
         except Exception as e:
             # Send a 502 Bad Gateway if connection to the remote stream fails
+            log.error("[%s] proxy error: %s: %s", station_id, type(e).__name__, e)
             try:
                 self.send_error(502, f"Bad Gateway: {str(e)}")
             except Exception:
                 pass
 
+class _ProxyHTTPServer(ThreadingHTTPServer):
+    # allow_reuse_address defaults to True, which on Windows lets a second app
+    # instance silently bind a port that's already in use (SO_REUSEADDR). That
+    # caused two processes to listen on 8090 at once, so Chromecast connections
+    # landed on a stale instance / got reset. Disabling it makes a busy port raise
+    # OSError so start() cleanly moves to the next free port instead.
+    allow_reuse_address = False
+
+
 class RadioProxyServer:
     """A multithreaded HTTP server that proxies audio streams to local devices."""
-    
+
     def __init__(self, stations, port=8080):
         self.stations = stations
         self.port = port
@@ -95,7 +118,7 @@ class RadioProxyServer:
         current_port = self.port
         while True:
             try:
-                self.server = ThreadingHTTPServer(('0.0.0.0', current_port), RadioProxyHandler)
+                self.server = _ProxyHTTPServer(('0.0.0.0', current_port), RadioProxyHandler)
                 self.server.stations = self.stations
                 self.port = current_port
                 break

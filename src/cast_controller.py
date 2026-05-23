@@ -1,6 +1,9 @@
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
+import logging
 import pychromecast
 from i18n import t
+
+log = logging.getLogger('radiocast.cast')
 
 class ChromecastDiscoveryThread(QThread):
     """Background thread to discover Chromecast devices without freezing the UI."""
@@ -136,14 +139,15 @@ class CastController(QObject):
     def disconnect_active(self):
         """Disconnects from the active Chromecast device and cleans up listeners."""
         if self.active_cast:
-            # Remove listeners if possible to avoid memory leaks / ghost callbacks
+            # Tear down the pychromecast socket client. Without this its keepalive
+            # thread keeps running and can prevent the process from exiting cleanly.
             try:
-                # pychromecast allows unregistering status listeners
-                # but simply setting active_cast to None is safe since the listeners check active state
-                pass
-            except Exception:
-                pass
+                self.active_cast.disconnect(timeout=2)
+            except Exception as e:
+                log.warning("disconnect failed: %s: %s", type(e).__name__, e)
             self.active_cast = None
+            self.status_listener = None
+            self.media_listener = None
             self.connection_status.emit(t("cast.disconnected"), False, "disconnected")
             self.playback_state_changed.emit("IDLE")
 
@@ -157,7 +161,16 @@ class CastController(QObject):
             self.browser = None
 
     def shutdown(self):
-        """Full cleanup on application exit: disconnect device and stop Zeroconf."""
+        """Full cleanup on application exit: stop worker threads, disconnect the
+        device and stop Zeroconf, so the process can exit without lingering."""
+        log.info("shutdown: cleaning up cast controller")
+        # Wait briefly for the discovery/connect QThreads so we don't tear their
+        # underlying objects down while they're still running.
+        for thread in (self.discovery_thread, self.connect_thread):
+            if thread is not None and thread.isRunning():
+                thread.quit()
+                if not thread.wait(3000):
+                    log.warning("a cast worker thread did not stop in time")
         self.disconnect_active()
         self._stop_browser()
 
@@ -167,11 +180,13 @@ class CastController(QObject):
             self.connection_status.emit(t("cast.not_connected_error"), False, "error")
             return
 
+        log.info("play_media -> url=%s content_type=%s title=%r", url, content_type, title)
         try:
             mc = self.active_cast.media_controller
             # play_media starts streaming on the Chromecast
             mc.play_media(url, content_type, title=title)
         except Exception as e:
+            log.error("play_media failed: %s: %s", type(e).__name__, e)
             self.connection_status.emit(t("cast.play_error", error=str(e)), True, "error")
 
     def stop_stream(self):
@@ -206,4 +221,9 @@ class CastController(QObject):
 
     def _handle_media_status(self, status):
         """Handles media playback updates (from background threads) and forwards them to GUI thread."""
+        # idle_reason is the key diagnostic: when a Chromecast rejects a stream it
+        # goes IDLE with idle_reason == 'ERROR' (e.g. unsupported codec/content-type).
+        log.info("media status: player_state=%s idle_reason=%s content_type=%s content_id=%s",
+                 status.player_state, getattr(status, 'idle_reason', None),
+                 getattr(status, 'content_type', None), getattr(status, 'content_id', None))
         self.playback_state_changed.emit(status.player_state)

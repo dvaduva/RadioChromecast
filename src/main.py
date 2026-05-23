@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+import logging
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 
@@ -9,6 +10,31 @@ from proxy import RadioProxyServer
 from cast_controller import CastController
 from gui import MainWindow
 import i18n
+
+def setup_logging(base_dir):
+    """Configures file + console logging. The log file lives next to config.json
+    so it's easy to find both in dev and in the packaged build."""
+    log_path = os.path.join(base_dir, 'radiochromecast.log')
+    handlers = [logging.StreamHandler(sys.stdout)]
+    try:
+        handlers.append(logging.FileHandler(log_path, mode='a', encoding='utf-8'))
+    except Exception as e:
+        print(f"[RadioCast] Nu s-a putut crea fisierul de log ({log_path}): {e}")
+
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s %(levelname)-7s [%(name)s] %(message)s',
+        handlers=handlers,
+    )
+    # PyChromecast/zeroconf are very chatty at DEBUG; keep them at INFO.
+    logging.getLogger('pychromecast').setLevel(logging.INFO)
+    logging.getLogger('zeroconf').setLevel(logging.INFO)
+    logging.getLogger('urllib3').setLevel(logging.INFO)
+
+    log = logging.getLogger('radiocast')
+    log.info('=' * 60)
+    log.info('Sesiune noua. Log: %s', log_path)
+    return log_path
 
 # Default configuration values, written to config.json on first run.
 DEFAULT_CONFIG = {
@@ -106,6 +132,7 @@ def load_stations(filepath):
 def main():
     # 0. Resolve base directory and load configuration
     base_dir = get_base_dir()
+    log_path = setup_logging(base_dir)
     config = load_config(base_dir)
     proxy_port = resolve_proxy_port(config)
 

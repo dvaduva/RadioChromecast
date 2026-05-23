@@ -50,6 +50,8 @@
   "sidebar.scan_running": "Scanning...",
   "sidebar.connection_status": "CONNECTION STATUS",
   "sidebar.not_connected": "No Chromecast connected.",
+  "sidebar.recent": "RECENTLY PLAYED",
+  "sidebar.recent_empty": "No track yet.",
   "sidebar.settings": "SETTINGS",
   "sidebar.proxy_port": "Proxy port:",
   "sidebar.apply": "Apply",

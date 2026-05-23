@@ -50,6 +50,8 @@
   "sidebar.scan_running": "Scanare...",
   "sidebar.connection_status": "STARE CONEXIUNE",
   "sidebar.not_connected": "Nu este conectat niciun Chromecast.",
+  "sidebar.recent": "ASCULTATE RECENT",
+  "sidebar.recent_empty": "Nicio piesă încă.",
   "sidebar.settings": "SETĂRI",
   "sidebar.proxy_port": "Port proxy:",
   "sidebar.apply": "Aplică",

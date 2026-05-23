@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import math
+import logging
 from string import Template
 import requests
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QPointF, QEvent, QTimer, QRect
@@ -17,6 +18,8 @@ from PyQt6.QtWidgets import (
 from metadata import MetadataFetcher
 import i18n
 from i18n import t
+
+log = logging.getLogger('radiocast.gui')
 
 def get_resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -208,6 +211,21 @@ QListWidget#deviceList::item:hover {
 QListWidget#deviceList::item:selected {
     background-color: #7c3aed;
     color: #ffffff;
+}
+/* Recently played history list */
+QListWidget#recentList {
+    background-color: $card_bg;
+    border: 1px solid $card_border;
+    border-radius: 8px;
+    padding: 4px;
+    color: $text;
+    outline: none;
+    font-size: 11px;
+}
+QListWidget#recentList::item {
+    padding: 6px 8px;
+    border-radius: 6px;
+    margin: 1px;
 }
 /* Favorite toggle on cards */
 QPushButton#favBtn {
@@ -727,6 +745,8 @@ class StationCard(QFrame):
 class MainWindow(QMainWindow):
     """Main window of the RadioChromecast application."""
 
+    MAX_RECENT = 5  # number of "recently played" tracks kept in the sidebar
+
     def __init__(self, stations, cast_controller, proxy_server, stations_path=None, config=None):
         super().__init__()
         self.stations = stations
@@ -886,6 +906,21 @@ class MainWindow(QMainWindow):
         self.status_label.setWordWrap(True)
         status_frame_layout.addWidget(self.status_label)
         sidebar_layout.addWidget(self.status_frame)
+
+        # Recently played tracks (in-app history of the last few "now playing"
+        # titles, mirroring the Windows notifications).
+        self.recent_title = QLabel(t("sidebar.recent"), self)
+        self.recent_title.setObjectName("sectionLabelMt")
+        sidebar_layout.addWidget(self.recent_title)
+
+        self.recent_list = QListWidget(self)
+        self.recent_list.setObjectName("recentList")
+        self.recent_list.setMaximumHeight(150)
+        self.recent_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.recent_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.recent_placeholder = QListWidgetItem(t("sidebar.recent_empty"))
+        self.recent_list.addItem(self.recent_placeholder)
+        sidebar_layout.addWidget(self.recent_list)
 
         # Settings section: proxy port
         self.settings_label = QLabel(t("sidebar.settings"), self)
@@ -1304,6 +1339,8 @@ class MainWindow(QMainWindow):
             self.state_label.setText(t("state.disconnected"))
 
     def on_playback_state_changed(self, player_state):
+        log.info("playback_state=%s active_station=%s", player_state,
+                 self.active_station['id'] if self.active_station else None)
         self.state_label.setText(player_state)
         if player_state in ["PLAYING", "BUFFERING"]:
             self.is_playing = True
@@ -1370,7 +1407,9 @@ class MainWindow(QMainWindow):
                 stream_url = self.proxy_server.get_proxy_url(station_data['id'])
             else:
                 stream_url = station_data['url']
-                
+
+            log.info("play_station id=%s proxy=%s url=%s", station_data['id'],
+                     station_data.get('proxy', False), stream_url)
             self.active_station = station_data
             self.cast_controller.play_stream(
                 stream_url,
@@ -1378,9 +1417,16 @@ class MainWindow(QMainWindow):
                 title=station_data['name']
             )
 
-            # Fetch "now playing" metadata directly from the source stream (not the
-            # proxy, which doesn't forward ICY metadata).
-            self.start_metadata(station_data['url'])
+            # NOTE: we deliberately do NOT open the metadata connection here.
+            # For proxied stations the proxy is already opening a connection to the
+            # same source; opening a second one *before* the proxy connects races it
+            # and small Icecast/Shoutcast servers (e.g. Guerrilla, Vanilla) end up
+            # never delivering audio to the proxy. Metadata polling is started from
+            # on_playback_state_changed once real playback (PLAYING/BUFFERING) begins,
+            # so the proxy gets its upstream connection first.
+            # Stop any fetcher left over from a previously playing station; the new
+            # one is (re)started from on_playback_state_changed.
+            self.stop_metadata()
 
             # Remember the last played station for next launch
             if self.config.get('last_station') != station_data['id']:
@@ -1433,11 +1479,30 @@ class MainWindow(QMainWindow):
             self.pb_track.clear()
 
     def notify_track(self, title):
-        """Shows a system tray notification with the newly playing track."""
-        if not self.tray or not QSystemTrayIcon.supportsMessages():
-            return
+        """Records the track in the in-app history and, when the app is in the
+        background, raises a native Windows notification so the user is alerted
+        to the song change without having the window in focus."""
         station_name = self.active_station['name'] if self.active_station else "RadioChromecast"
-        self.tray.showMessage(station_name, f"♪ {title}", self.app_icon, 5000)
+        self.add_recent_track(station_name, title)
+
+        # Only notify when the window isn't the active foreground window (i.e. it's
+        # minimized, hidden to tray, or behind another app) — a toast on top of the
+        # window you're already looking at is just noise.
+        in_background = self.isMinimized() or not self.isVisible() or not self.isActiveWindow()
+        if in_background and self.tray and QSystemTrayIcon.supportsMessages():
+            self.tray.showMessage(station_name, f"♪ {title}", self.app_icon, 5000)
+
+    def add_recent_track(self, station_name, title):
+        """Prepends a track to the 'recently played' list, capped at MAX_RECENT."""
+        # Drop the "no track yet" placeholder on the first real entry.
+        if self.recent_placeholder is not None:
+            self.recent_list.clear()
+            self.recent_placeholder = None
+
+        item = QListWidgetItem(f"♪ {title}\n{station_name}")
+        self.recent_list.insertItem(0, item)
+        while self.recent_list.count() > self.MAX_RECENT:
+            self.recent_list.takeItem(self.recent_list.count() - 1)
 
     # --- Filtering and utility slots ---
 
@@ -1634,6 +1699,9 @@ class MainWindow(QMainWindow):
         self.cast_section_label.setText(t("sidebar.devices"))
         self.scan_btn.setText(t("sidebar.scan"))
         self.status_title.setText(t("sidebar.connection_status"))
+        self.recent_title.setText(t("sidebar.recent"))
+        if self.recent_placeholder is not None:
+            self.recent_placeholder.setText(t("sidebar.recent_empty"))
         self.settings_label.setText(t("sidebar.settings"))
         self.port_label.setText(t("sidebar.proxy_port"))
         self.apply_port_btn.setText(t("sidebar.apply"))
