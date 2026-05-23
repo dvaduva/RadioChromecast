@@ -1,5 +1,6 @@
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 import pychromecast
+from i18n import t
 
 class ChromecastDiscoveryThread(QThread):
     """Background thread to discover Chromecast devices without freezing the UI."""
@@ -56,7 +57,10 @@ class CastController(QObject):
     
     # PyQt signals to communicate thread-safely with the GUI
     devices_updated = pyqtSignal(list) # List of CastDevice objects
-    connection_status = pyqtSignal(str, bool) # (Status Message, IsConnected)
+    # (Status Message, IsConnected, Kind). Kind is a locale-independent hint
+    # ("searching", "connecting", "info", "error", "connected", "disconnected")
+    # so the GUI can pick the right status LED without parsing the message text.
+    connection_status = pyqtSignal(str, bool, str)
     playback_state_changed = pyqtSignal(str) # player_state string (e.g. PLAYING, BUFFERING, IDLE)
     volume_changed = pyqtSignal(float, bool) # (volume_level 0.0-1.0, volume_muted bool)
 
@@ -72,7 +76,7 @@ class CastController(QObject):
 
     def start_discovery(self):
         """Triggers asynchronous discovery of Chromecast devices."""
-        self.connection_status.emit("Se caută dispozitive Chromecast în rețea...", False)
+        self.connection_status.emit(t("cast.searching"), False, "searching")
         self.discovery_thread = ChromecastDiscoveryThread()
         self.discovery_thread.devices_discovered.connect(self._on_discovery_finished)
         self.discovery_thread.discovery_error.connect(self._on_discovery_error)
@@ -86,21 +90,21 @@ class CastController(QObject):
         self.chromecasts = chromecasts
         self.devices_updated.emit(chromecasts)
         if chromecasts:
-            self.connection_status.emit(f"Scanare finalizată. S-au găsit {len(chromecasts)} dispozitive.", False)
+            self.connection_status.emit(t("cast.scan_done", count=len(chromecasts)), False, "info")
         else:
-            self.connection_status.emit("Nu s-a găsit niciun Chromecast. Încearcă să scanezi din nou.", False)
+            self.connection_status.emit(t("cast.none_found"), False, "info")
 
     def _on_discovery_error(self, err):
-        self.connection_status.emit(f"Eroare la scanare: {err}", False)
+        self.connection_status.emit(t("cast.scan_error", error=err), False, "error")
 
     def connect_device(self, friendly_name):
         """Initiates connection to the selected Chromecast device in a background thread."""
         cast_device = next((c for c in self.chromecasts if c.name == friendly_name), None)
         if not cast_device:
-            self.connection_status.emit("Dispozitivul selectat nu mai este disponibil.", False)
+            self.connection_status.emit(t("cast.device_unavailable"), False, "error")
             return
 
-        self.connection_status.emit(f"Se conectează la {friendly_name}...", False)
+        self.connection_status.emit(t("cast.connecting", name=friendly_name), False, "connecting")
         self.disconnect_active()
 
         self.connect_thread = ChromecastConnectThread(cast_device)
@@ -110,7 +114,7 @@ class CastController(QObject):
 
     def _on_connection_success(self, cast_device):
         self.active_cast = cast_device
-        self.connection_status.emit(f"Conectat la: {cast_device.name}", True)
+        self.connection_status.emit(t("cast.connected", name=cast_device.name), True, "connected")
         
         # Register status listeners to monitor the device's state
         self.status_listener = CastStatusListener(self._handle_cast_status)
@@ -127,7 +131,7 @@ class CastController(QObject):
 
     def _on_connection_failed(self, err):
         self.active_cast = None
-        self.connection_status.emit(f"Conexiunea a eșuat: {err}", False)
+        self.connection_status.emit(t("cast.connection_failed", error=err), False, "error")
 
     def disconnect_active(self):
         """Disconnects from the active Chromecast device and cleans up listeners."""
@@ -140,7 +144,7 @@ class CastController(QObject):
             except Exception:
                 pass
             self.active_cast = None
-            self.connection_status.emit("Deconectat", False)
+            self.connection_status.emit(t("cast.disconnected"), False, "disconnected")
             self.playback_state_changed.emit("IDLE")
 
     def _stop_browser(self):
@@ -160,15 +164,15 @@ class CastController(QObject):
     def play_stream(self, url, content_type="audio/mpeg", title="Radio Stream"):
         """Sends the audio stream URL to the connected Chromecast device."""
         if not self.active_cast:
-            self.connection_status.emit("Eroare: Nu sunteți conectat la niciun Chromecast.", False)
+            self.connection_status.emit(t("cast.not_connected_error"), False, "error")
             return
-            
+
         try:
             mc = self.active_cast.media_controller
             # play_media starts streaming on the Chromecast
             mc.play_media(url, content_type, title=title)
         except Exception as e:
-            self.connection_status.emit(f"Eroare la redare: {str(e)}", True)
+            self.connection_status.emit(t("cast.play_error", error=str(e)), True, "error")
 
     def stop_stream(self):
         """Stops the active media playback on the connected Chromecast."""
@@ -176,7 +180,7 @@ class CastController(QObject):
             try:
                 self.active_cast.media_controller.stop()
             except Exception as e:
-                self.connection_status.emit(f"Eroare la oprire: {str(e)}", True)
+                self.connection_status.emit(t("cast.stop_error", error=str(e)), True, "error")
 
     def set_volume(self, level):
         """Sets the volume level of the Chromecast (0.0 to 1.0)."""
@@ -186,7 +190,7 @@ class CastController(QObject):
                 # controlled through the receiver controller.
                 self.active_cast.socket_client.receiver_controller.set_volume(level)
             except Exception as e:
-                self.connection_status.emit(f"Eroare la setarea volumului: {e}", True)
+                self.connection_status.emit(t("cast.volume_error", error=e), True, "error")
 
     def set_mute(self, mute):
         """Mutes or unmutes the connected Chromecast."""
@@ -194,7 +198,7 @@ class CastController(QObject):
             try:
                 self.active_cast.socket_client.receiver_controller.set_volume_muted(mute)
             except Exception as e:
-                self.connection_status.emit(f"Eroare la mut: {e}", True)
+                self.connection_status.emit(t("cast.mute_error", error=e), True, "error")
 
     def _handle_cast_status(self, status):
         """Handles cast status updates (from background threads) and forwards them to GUI thread."""

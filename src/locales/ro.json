@@ -1,0 +1,101 @@
+{
+  "_meta": {
+    "name": "Română",
+    "code": "ro"
+  },
+
+  "common.save": "Salvează",
+  "common.cancel": "Anulează",
+  "common.close": "Închide",
+  "common.error": "Eroare",
+  "common.general": "General",
+
+  "form.title_add": "Adaugă post nou",
+  "form.title_edit": "Editează postul",
+  "form.name": "Nume *",
+  "form.name_ph": "ex: Radio ZU",
+  "form.genre": "Gen",
+  "form.genre_ph": "ex: Pop / Hituri",
+  "form.description": "Descriere",
+  "form.description_ph": "Scurtă descriere a postului",
+  "form.url": "URL stream *",
+  "form.url_ph": "https://exemplu.ro/stream",
+  "form.logo": "URL logo",
+  "form.logo_ph": "https://exemplu.ro/logo.png (opțional)",
+  "form.content_type": "Tip conținut",
+  "form.proxy_label": "Proxy",
+  "form.proxy_checkbox": "Rutează prin proxy-ul local (necesar pentru unele stream-uri)",
+  "form.required_title": "Câmp obligatoriu",
+  "form.name_required": "Numele postului este obligatoriu.",
+  "form.url_required": "URL-ul stream-ului este obligatoriu.",
+
+  "manager.title": "Gestionează posturile radio",
+  "manager.heading": "Posturi radio",
+  "manager.add": "➕ Adaugă",
+  "manager.edit": "✎ Editează",
+  "manager.delete": "🗑 Șterge",
+  "manager.no_name": "(fără nume)",
+  "manager.select_title": "Selectează un post",
+  "manager.select_to_edit": "Selectează un post pentru editare.",
+  "manager.select_to_delete": "Selectează un post pentru ștergere.",
+  "manager.confirm_delete_title": "Confirmă ștergerea",
+  "manager.confirm_delete_msg": "Sigur vrei să ștergi „{name}”?",
+
+  "card.add_fav": "Adaugă la favorite",
+  "card.remove_fav": "Elimină de la favorite",
+
+  "sidebar.devices": "DISPOZITIVE CHROMECAST",
+  "sidebar.disconnected_item": "Deconectat",
+  "sidebar.scan": "Scanează Rețea",
+  "sidebar.scan_running": "Scanare...",
+  "sidebar.connection_status": "STARE CONEXIUNE",
+  "sidebar.not_connected": "Nu este conectat niciun Chromecast.",
+  "sidebar.settings": "SETĂRI",
+  "sidebar.proxy_port": "Port proxy:",
+  "sidebar.apply": "Aplică",
+  "sidebar.help_note": "Asigură-te că dispozitivul tău Chromecast se află în aceeași rețea Wi-Fi cu calculatorul.",
+
+  "content.search_ph": "Caută un post de radio sau gen muzical...",
+  "content.fav_filter": "★ Favorite",
+  "content.manage": "⚙ Gestionează",
+  "content.manage_tooltip": "Adaugă, editează sau șterge posturi radio",
+
+  "playbar.select_station": "Selectează un post",
+  "playbar.no_station": "Niciun post selectat",
+  "playbar.no_description": "Fără descriere",
+
+  "state.connected": "CONECTAT",
+  "state.disconnected": "DECONECTAT",
+
+  "theme.to_light": "Comută pe tema deschisă (light)",
+  "theme.to_dark": "Comută pe tema închisă (dark)",
+  "lang.toggle_tooltip": "Schimbă limba (Română / English)",
+
+  "status.reconnecting": "Se reconectează la ultimul dispozitiv: {name}...",
+
+  "proxy.already_using": "Proxy-ul foloseste deja portul {port}.",
+  "proxy.change_failed": "Nu s-a putut schimba portul: {error}",
+  "proxy.port_busy": "Portul {port} era ocupat. Proxy-ul foloseste {actual}.",
+  "proxy.now_using": "Proxy-ul ruleaza acum pe portul {port}.",
+
+  "error.save_stations_failed": "Nu s-a putut salva lista de posturi:\n{error}",
+
+  "tray.show": "Afișează",
+  "tray.quit": "Ieșire",
+  "tray.running_background": "Aplicația rulează în continuare în zona de notificări.",
+
+  "cast.searching": "Se caută dispozitive Chromecast în rețea...",
+  "cast.scan_done": "Scanare finalizată. S-au găsit {count} dispozitive.",
+  "cast.none_found": "Nu s-a găsit niciun Chromecast. Încearcă să scanezi din nou.",
+  "cast.scan_error": "Eroare la scanare: {error}",
+  "cast.device_unavailable": "Dispozitivul selectat nu mai este disponibil.",
+  "cast.connecting": "Se conectează la {name}...",
+  "cast.connected": "Conectat la: {name}",
+  "cast.connection_failed": "Conexiunea a eșuat: {error}",
+  "cast.disconnected": "Deconectat",
+  "cast.not_connected_error": "Eroare: Nu sunteți conectat la niciun Chromecast.",
+  "cast.play_error": "Eroare la redare: {error}",
+  "cast.stop_error": "Eroare la oprire: {error}",
+  "cast.volume_error": "Eroare la setarea volumului: {error}",
+  "cast.mute_error": "Eroare la mut: {error}"
+}

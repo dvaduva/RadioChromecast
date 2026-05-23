@@ -8,11 +8,13 @@ from PyQt6.QtGui import QIcon
 from proxy import RadioProxyServer
 from cast_controller import CastController
 from gui import MainWindow
+import i18n
 
 # Default configuration values, written to config.json on first run.
 DEFAULT_CONFIG = {
     "proxy_port": 8090,
-    "theme": "dark"
+    "theme": "dark",
+    "language": "ro"
 }
 
 def get_base_dir():
@@ -106,6 +108,10 @@ def main():
     base_dir = get_base_dir()
     config = load_config(base_dir)
     proxy_port = resolve_proxy_port(config)
+
+    # Load translations and select the configured language (defaults to Romanian)
+    i18n.load_translations()
+    i18n.set_language(config.get('language', i18n.DEFAULT_LANG))
 
     # 1. Initialize stations list
     stations_path = get_stations_filepath(base_dir)

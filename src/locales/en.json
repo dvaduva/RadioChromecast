@@ -1,0 +1,101 @@
+{
+  "_meta": {
+    "name": "English",
+    "code": "en"
+  },
+
+  "common.save": "Save",
+  "common.cancel": "Cancel",
+  "common.close": "Close",
+  "common.error": "Error",
+  "common.general": "General",
+
+  "form.title_add": "Add new station",
+  "form.title_edit": "Edit station",
+  "form.name": "Name *",
+  "form.name_ph": "e.g. Radio ZU",
+  "form.genre": "Genre",
+  "form.genre_ph": "e.g. Pop / Hits",
+  "form.description": "Description",
+  "form.description_ph": "A short description of the station",
+  "form.url": "Stream URL *",
+  "form.url_ph": "https://example.com/stream",
+  "form.logo": "Logo URL",
+  "form.logo_ph": "https://example.com/logo.png (optional)",
+  "form.content_type": "Content type",
+  "form.proxy_label": "Proxy",
+  "form.proxy_checkbox": "Route through the local proxy (required for some streams)",
+  "form.required_title": "Required field",
+  "form.name_required": "The station name is required.",
+  "form.url_required": "The stream URL is required.",
+
+  "manager.title": "Manage radio stations",
+  "manager.heading": "Radio stations",
+  "manager.add": "➕ Add",
+  "manager.edit": "✎ Edit",
+  "manager.delete": "🗑 Delete",
+  "manager.no_name": "(no name)",
+  "manager.select_title": "Select a station",
+  "manager.select_to_edit": "Select a station to edit.",
+  "manager.select_to_delete": "Select a station to delete.",
+  "manager.confirm_delete_title": "Confirm deletion",
+  "manager.confirm_delete_msg": "Are you sure you want to delete “{name}”?",
+
+  "card.add_fav": "Add to favorites",
+  "card.remove_fav": "Remove from favorites",
+
+  "sidebar.devices": "CHROMECAST DEVICES",
+  "sidebar.disconnected_item": "Disconnected",
+  "sidebar.scan": "Scan Network",
+  "sidebar.scan_running": "Scanning...",
+  "sidebar.connection_status": "CONNECTION STATUS",
+  "sidebar.not_connected": "No Chromecast connected.",
+  "sidebar.settings": "SETTINGS",
+  "sidebar.proxy_port": "Proxy port:",
+  "sidebar.apply": "Apply",
+  "sidebar.help_note": "Make sure your Chromecast device is on the same Wi-Fi network as your computer.",
+
+  "content.search_ph": "Search for a radio station or music genre...",
+  "content.fav_filter": "★ Favorites",
+  "content.manage": "⚙ Manage",
+  "content.manage_tooltip": "Add, edit or delete radio stations",
+
+  "playbar.select_station": "Select a station",
+  "playbar.no_station": "No station selected",
+  "playbar.no_description": "No description",
+
+  "state.connected": "CONNECTED",
+  "state.disconnected": "DISCONNECTED",
+
+  "theme.to_light": "Switch to light theme",
+  "theme.to_dark": "Switch to dark theme",
+  "lang.toggle_tooltip": "Change language (Română / English)",
+
+  "status.reconnecting": "Reconnecting to last device: {name}...",
+
+  "proxy.already_using": "The proxy is already using port {port}.",
+  "proxy.change_failed": "Could not change the port: {error}",
+  "proxy.port_busy": "Port {port} was busy. The proxy is using {actual}.",
+  "proxy.now_using": "The proxy is now running on port {port}.",
+
+  "error.save_stations_failed": "Could not save the station list:\n{error}",
+
+  "tray.show": "Show",
+  "tray.quit": "Quit",
+  "tray.running_background": "The application keeps running in the notification area.",
+
+  "cast.searching": "Searching for Chromecast devices on the network...",
+  "cast.scan_done": "Scan complete. Found {count} devices.",
+  "cast.none_found": "No Chromecast found. Try scanning again.",
+  "cast.scan_error": "Scan error: {error}",
+  "cast.device_unavailable": "The selected device is no longer available.",
+  "cast.connecting": "Connecting to {name}...",
+  "cast.connected": "Connected to: {name}",
+  "cast.connection_failed": "Connection failed: {error}",
+  "cast.disconnected": "Disconnected",
+  "cast.not_connected_error": "Error: You are not connected to any Chromecast.",
+  "cast.play_error": "Playback error: {error}",
+  "cast.stop_error": "Stop error: {error}",
+  "cast.volume_error": "Volume error: {error}",
+  "cast.mute_error": "Mute error: {error}"
+}

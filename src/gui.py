@@ -15,6 +15,8 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit, QMessageBox, QListWidgetItem, QAbstractItemView
 )
 from metadata import MetadataFetcher
+import i18n
+from i18n import t
 
 def get_resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -408,7 +410,7 @@ class StationFormDialog(QDialog):
         self.existing_ids = existing_ids or set()
         self.is_edit = station is not None
 
-        self.setWindowTitle("Editează postul" if self.is_edit else "Adaugă post nou")
+        self.setWindowTitle(t("form.title_edit") if self.is_edit else t("form.title_add"))
         self.setMinimumWidth(460)
         self.init_ui()
 
@@ -424,25 +426,25 @@ class StationFormDialog(QDialog):
         s = self.station or {}
 
         self.name_input = QLineEdit(s.get('name', ''), self)
-        self.name_input.setPlaceholderText("ex: Radio ZU")
-        form.addRow("Nume *", self.name_input)
+        self.name_input.setPlaceholderText(t("form.name_ph"))
+        form.addRow(t("form.name"), self.name_input)
 
         self.genre_input = QLineEdit(s.get('genre', ''), self)
-        self.genre_input.setPlaceholderText("ex: Pop / Hituri")
-        form.addRow("Gen", self.genre_input)
+        self.genre_input.setPlaceholderText(t("form.genre_ph"))
+        form.addRow(t("form.genre"), self.genre_input)
 
         self.desc_input = QPlainTextEdit(s.get('description', ''), self)
-        self.desc_input.setPlaceholderText("Scurtă descriere a postului")
+        self.desc_input.setPlaceholderText(t("form.description_ph"))
         self.desc_input.setFixedHeight(64)
-        form.addRow("Descriere", self.desc_input)
+        form.addRow(t("form.description"), self.desc_input)
 
         self.url_input = QLineEdit(s.get('url', ''), self)
-        self.url_input.setPlaceholderText("https://exemplu.ro/stream")
-        form.addRow("URL stream *", self.url_input)
+        self.url_input.setPlaceholderText(t("form.url_ph"))
+        form.addRow(t("form.url"), self.url_input)
 
         self.logo_input = QLineEdit(s.get('logo') or '', self)
-        self.logo_input.setPlaceholderText("https://exemplu.ro/logo.png (opțional)")
-        form.addRow("URL logo", self.logo_input)
+        self.logo_input.setPlaceholderText(t("form.logo_ph"))
+        form.addRow(t("form.logo"), self.logo_input)
 
         self.type_combo = QComboBox(self)
         self.type_combo.setEditable(True)
@@ -452,11 +454,11 @@ class StationFormDialog(QDialog):
             self.type_combo.setCurrentText(current_type)
         else:
             self.type_combo.setEditText(current_type)
-        form.addRow("Tip conținut", self.type_combo)
+        form.addRow(t("form.content_type"), self.type_combo)
 
-        self.proxy_check = QCheckBox("Rutează prin proxy-ul local (necesar pentru unele stream-uri)", self)
+        self.proxy_check = QCheckBox(t("form.proxy_checkbox"), self)
         self.proxy_check.setChecked(bool(s.get('proxy', False)))
-        form.addRow("Proxy", self.proxy_check)
+        form.addRow(t("form.proxy_label"), self.proxy_check)
 
         layout.addLayout(form)
 
@@ -465,8 +467,8 @@ class StationFormDialog(QDialog):
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel,
             self
         )
-        buttons.button(QDialogButtonBox.StandardButton.Save).setText("Salvează")
-        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Anulează")
+        buttons.button(QDialogButtonBox.StandardButton.Save).setText(t("common.save"))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(t("common.cancel"))
         buttons.accepted.connect(self.on_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -476,10 +478,10 @@ class StationFormDialog(QDialog):
         url = self.url_input.text().strip()
 
         if not name:
-            QMessageBox.warning(self, "Câmp obligatoriu", "Numele postului este obligatoriu.")
+            QMessageBox.warning(self, t("form.required_title"), t("form.name_required"))
             return
         if not url:
-            QMessageBox.warning(self, "Câmp obligatoriu", "URL-ul stream-ului este obligatoriu.")
+            QMessageBox.warning(self, t("form.required_title"), t("form.url_required"))
             return
 
         # Keep the existing id when editing; generate a unique one when adding.
@@ -492,7 +494,7 @@ class StationFormDialog(QDialog):
             'id': station_id,
             'name': name,
             'description': self.desc_input.toPlainText().strip(),
-            'genre': self.genre_input.text().strip() or 'General',
+            'genre': self.genre_input.text().strip() or t("common.general"),
             'url': url,
             'logo': self.logo_input.text().strip() or None,
             'content_type': self.type_combo.currentText().strip() or 'audio/mpeg',
@@ -520,7 +522,7 @@ class StationManagerDialog(QDialog):
     def __init__(self, window):
         super().__init__(window)
         self.window = window
-        self.setWindowTitle("Gestionează posturile radio")
+        self.setWindowTitle(t("manager.title"))
         self.setMinimumSize(420, 480)
         self.init_ui()
         self.refresh_list()
@@ -530,7 +532,7 @@ class StationManagerDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(14)
 
-        title = QLabel("Posturi radio", self)
+        title = QLabel(t("manager.heading"), self)
         title.setObjectName("appTitle")
         layout.addWidget(title)
 
@@ -543,29 +545,29 @@ class StationManagerDialog(QDialog):
         # Action buttons
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
-        self.add_btn = QPushButton("➕ Adaugă", self)
+        self.add_btn = QPushButton(t("manager.add"), self)
         self.add_btn.setObjectName("scanBtn")
         self.add_btn.clicked.connect(self.add_station)
         btn_row.addWidget(self.add_btn)
 
-        self.edit_btn = QPushButton("✎ Editează", self)
+        self.edit_btn = QPushButton(t("manager.edit"), self)
         self.edit_btn.clicked.connect(self.edit_selected)
         btn_row.addWidget(self.edit_btn)
 
-        self.delete_btn = QPushButton("🗑 Șterge", self)
+        self.delete_btn = QPushButton(t("manager.delete"), self)
         self.delete_btn.clicked.connect(self.delete_selected)
         btn_row.addWidget(self.delete_btn)
         layout.addLayout(btn_row)
 
         close_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
-        close_box.button(QDialogButtonBox.StandardButton.Close).setText("Închide")
+        close_box.button(QDialogButtonBox.StandardButton.Close).setText(t("common.close"))
         close_box.rejected.connect(self.accept)
         layout.addWidget(close_box)
 
     def refresh_list(self):
         self.list_widget.clear()
         for station in self.window.sorted_stations():
-            label = station.get('name', '(fără nume)')
+            label = station.get('name', t("manager.no_name"))
             genre = station.get('genre')
             if genre:
                 label += f"  —  {genre}"
@@ -590,7 +592,7 @@ class StationManagerDialog(QDialog):
     def edit_selected(self):
         station = self._selected_station()
         if not station:
-            QMessageBox.information(self, "Selectează un post", "Selectează un post pentru editare.")
+            QMessageBox.information(self, t("manager.select_title"), t("manager.select_to_edit"))
             return
         existing_ids = {s['id'] for s in self.window.stations}
         dialog = StationFormDialog(self, station=station, existing_ids=existing_ids)
@@ -601,11 +603,11 @@ class StationManagerDialog(QDialog):
     def delete_selected(self):
         station = self._selected_station()
         if not station:
-            QMessageBox.information(self, "Selectează un post", "Selectează un post pentru ștergere.")
+            QMessageBox.information(self, t("manager.select_title"), t("manager.select_to_delete"))
             return
         reply = QMessageBox.question(
-            self, "Confirmă ștergerea",
-            f"Sigur vrei să ștergi „{station['name']}”?",
+            self, t("manager.confirm_delete_title"),
+            t("manager.confirm_delete_msg", name=station['name']),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
@@ -643,7 +645,7 @@ class StationCard(QFrame):
         self.fav_btn.setObjectName("favBtn")
         self.fav_btn.setFixedSize(28, 28)
         self.fav_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.fav_btn.setToolTip("Adaugă la favorite")
+        self.fav_btn.setToolTip(t("card.add_fav"))
         self.fav_btn.clicked.connect(self.toggle_favorite)
         self.update_fav_icon()
         top_bar.addWidget(self.fav_btn)
@@ -675,7 +677,7 @@ class StationCard(QFrame):
         # Genre badge layout
         genre_layout = QHBoxLayout()
         genre_layout.addStretch()
-        self.genre_label = QLabel(self.station_data.get('genre', 'General'), self)
+        self.genre_label = QLabel(self.station_data.get('genre', t("common.general")), self)
         self.genre_label.setObjectName("stationGenre")
         self.genre_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         genre_layout.addWidget(self.genre_label)
@@ -706,7 +708,7 @@ class StationCard(QFrame):
     def update_fav_icon(self):
         self.fav_btn.setIcon(QIcon(create_star_icon(self.is_favorite)))
         self.fav_btn.setIconSize(QSize(20, 20))
-        self.fav_btn.setToolTip("Elimină de la favorite" if self.is_favorite else "Adaugă la favorite")
+        self.fav_btn.setToolTip(t("card.remove_fav") if self.is_favorite else t("card.add_fav"))
 
     def toggle_favorite(self):
         self.is_favorite = not self.is_favorite
@@ -748,6 +750,9 @@ class MainWindow(QMainWindow):
         self.is_playing = False
         self.is_muted = False
         self.current_volume = 0.5
+        # Tracks the current connection so retranslate_ui() can restore the right
+        # default status text when the user switches language while idle.
+        self._is_connected = False
 
         # Auto-reconnect to the last used device / resume the last station, once
         self._auto_connect_pending = bool(self.config.get('last_device'))
@@ -820,6 +825,13 @@ class MainWindow(QMainWindow):
         logo_container.addWidget(self.app_title)
         logo_container.addStretch()
 
+        # Language toggle button (RO / EN)
+        self.lang_btn = QPushButton(self)
+        self.lang_btn.setObjectName("themeBtn")
+        self.lang_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.update_lang_button()
+        logo_container.addWidget(self.lang_btn)
+
         # Theme toggle button
         self.theme_btn = QPushButton(self)
         self.theme_btn.setObjectName("themeBtn")
@@ -835,25 +847,25 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(sep)
 
         # Chromecast Title Section
-        cast_section_label = QLabel("DISPOZITIVE CHROMECAST", self)
-        cast_section_label.setObjectName("sectionLabel")
-        sidebar_layout.addWidget(cast_section_label)
+        self.cast_section_label = QLabel(t("sidebar.devices"), self)
+        self.cast_section_label.setObjectName("sectionLabel")
+        sidebar_layout.addWidget(self.cast_section_label)
 
         # Chromecast Device List
         self.device_list = QListWidget(self)
         self.device_list.setObjectName("deviceList")
         self.device_list.setMaximumHeight(180)
-        self.device_list.addItem("Deconectat")
+        self.device_list.addItem(t("sidebar.disconnected_item"))
         self.device_list.setCurrentRow(0)
         sidebar_layout.addWidget(self.device_list)
 
         # Scan Button
-        self.scan_btn = QPushButton("Scanează Rețea", self)
+        self.scan_btn = QPushButton(t("sidebar.scan"), self)
         self.scan_btn.setObjectName("scanBtn")
         sidebar_layout.addWidget(self.scan_btn)
 
         # Chromecast connection status display
-        self.status_title = QLabel("STARE CONEXIUNE", self)
+        self.status_title = QLabel(t("sidebar.connection_status"), self)
         self.status_title.setObjectName("sectionLabelMt")
         sidebar_layout.addWidget(self.status_title)
 
@@ -869,22 +881,22 @@ class MainWindow(QMainWindow):
         self.set_led_state("grey")
         status_frame_layout.addWidget(self.status_led)
 
-        self.status_label = QLabel("Nu este conectat niciun Chromecast.", self)
+        self.status_label = QLabel(t("sidebar.not_connected"), self)
         self.status_label.setObjectName("statusLabel")
         self.status_label.setWordWrap(True)
         status_frame_layout.addWidget(self.status_label)
         sidebar_layout.addWidget(self.status_frame)
 
         # Settings section: proxy port
-        settings_label = QLabel("SETĂRI", self)
-        settings_label.setObjectName("sectionLabelMt")
-        sidebar_layout.addWidget(settings_label)
+        self.settings_label = QLabel(t("sidebar.settings"), self)
+        self.settings_label.setObjectName("sectionLabelMt")
+        sidebar_layout.addWidget(self.settings_label)
 
         port_row = QHBoxLayout()
         port_row.setSpacing(8)
-        port_label = QLabel("Port proxy:", self)
-        port_label.setObjectName("statusLabel")
-        port_row.addWidget(port_label)
+        self.port_label = QLabel(t("sidebar.proxy_port"), self)
+        self.port_label.setObjectName("statusLabel")
+        port_row.addWidget(self.port_label)
 
         self.port_spin = QSpinBox(self)
         self.port_spin.setObjectName("portSpin")
@@ -892,7 +904,7 @@ class MainWindow(QMainWindow):
         self.port_spin.setValue(self.proxy_server.port)
         port_row.addWidget(self.port_spin)
 
-        self.apply_port_btn = QPushButton("Aplică", self)
+        self.apply_port_btn = QPushButton(t("sidebar.apply"), self)
         self.apply_port_btn.setObjectName("applyPortBtn")
         port_row.addWidget(self.apply_port_btn)
         sidebar_layout.addLayout(port_row)
@@ -901,10 +913,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addStretch()
 
         # Instructions / Help note
-        self.help_note = QLabel(
-            "Asigură-te că dispozitivul tău Chromecast se află în aceeași rețea Wi-Fi cu calculatorul.",
-            self
-        )
+        self.help_note = QLabel(t("sidebar.help_note"), self)
         self.help_note.setObjectName("helpNote")
         self.help_note.setWordWrap(True)
         sidebar_layout.addWidget(self.help_note)
@@ -921,21 +930,21 @@ class MainWindow(QMainWindow):
         search_layout = QHBoxLayout()
         self.search_input = QLineEdit(self)
         self.search_input.setObjectName("searchBar")
-        self.search_input.setPlaceholderText("Caută un post de radio sau gen muzical...")
+        self.search_input.setPlaceholderText(t("content.search_ph"))
         search_layout.addWidget(self.search_input)
 
         # Favorites-only filter toggle
-        self.fav_filter_btn = QPushButton("★ Favorite", self)
+        self.fav_filter_btn = QPushButton(t("content.fav_filter"), self)
         self.fav_filter_btn.setObjectName("favFilterBtn")
         self.fav_filter_btn.setCheckable(True)
         self.fav_filter_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         search_layout.addWidget(self.fav_filter_btn)
 
         # Open the CRUD manager for radio stations
-        self.manage_btn = QPushButton("⚙ Gestionează", self)
+        self.manage_btn = QPushButton(t("content.manage"), self)
         self.manage_btn.setObjectName("scanBtn")
         self.manage_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.manage_btn.setToolTip("Adaugă, editează sau șterge posturi radio")
+        self.manage_btn.setToolTip(t("content.manage_tooltip"))
         search_layout.addWidget(self.manage_btn)
 
         content_layout.addLayout(search_layout)
@@ -982,11 +991,11 @@ class MainWindow(QMainWindow):
         text_layout = QVBoxLayout()
         text_layout.setSpacing(2)
         text_layout.addStretch()
-        self.pb_title = QLabel("Selectează un post", self)
+        self.pb_title = QLabel(t("playbar.select_station"), self)
         self.pb_title.setObjectName("pbTitle")
         text_layout.addWidget(self.pb_title)
 
-        self.pb_desc = QLabel("Niciun post selectat", self)
+        self.pb_desc = QLabel(t("playbar.no_station"), self)
         self.pb_desc.setObjectName("pbDesc")
         text_layout.addWidget(self.pb_desc)
 
@@ -1020,7 +1029,7 @@ class MainWindow(QMainWindow):
         controls_layout.addLayout(btn_layout)
 
         # Playing State string indicator
-        self.state_label = QLabel("DECONECTAT", self)
+        self.state_label = QLabel(t("state.disconnected"), self)
         self.state_label.setObjectName("stateLabel")
         self.state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         controls_layout.addWidget(self.state_label)
@@ -1124,6 +1133,9 @@ class MainWindow(QMainWindow):
         # Theme toggle
         self.theme_btn.clicked.connect(self.toggle_theme)
 
+        # Language toggle
+        self.lang_btn.clicked.connect(self.toggle_language)
+
         # Proxy port apply
         self.apply_port_btn.clicked.connect(self.apply_proxy_port)
         
@@ -1210,14 +1222,14 @@ class MainWindow(QMainWindow):
     
     def scan_chromecasts(self):
         self.scan_btn.setEnabled(False)
-        self.scan_btn.setText("Scanare...")
+        self.scan_btn.setText(t("sidebar.scan_running"))
         self.device_list.setEnabled(False)
         self.cast_controller.start_discovery()
 
     def on_devices_updated(self, devices):
         self.device_list.blockSignals(True)
         self.device_list.clear()
-        self.device_list.addItem("Deconectat")
+        self.device_list.addItem(t("sidebar.disconnected_item"))
 
         # Populate list of discovered Chromecasts
         for d in devices:
@@ -1244,12 +1256,12 @@ class MainWindow(QMainWindow):
         self.device_list.blockSignals(False)
         self.device_list.setEnabled(True)
         self.scan_btn.setEnabled(True)
-        self.scan_btn.setText("Scanează Rețea")
+        self.scan_btn.setText(t("sidebar.scan"))
 
         # Auto-reconnect happens only once (don't reconnect on every manual rescan)
         self._auto_connect_pending = False
         if auto_connect_name:
-            self.status_label.setText(f"Se reconectează la ultimul dispozitiv: {auto_connect_name}...")
+            self.status_label.setText(t("status.reconnecting", name=auto_connect_name))
             self.cast_controller.connect_device(auto_connect_name)
 
     def device_selection_changed(self, index):
@@ -1260,13 +1272,14 @@ class MainWindow(QMainWindow):
             if item:
                 self.cast_controller.connect_device(item.text())
 
-    def on_connection_status_changed(self, message, is_connected):
+    def on_connection_status_changed(self, message, is_connected, kind="info"):
+        self._is_connected = is_connected
         self.status_label.setText(message)
         if is_connected:
             self.set_led_state("green")
             self.volume_slider.setEnabled(True)
             self.play_btn.setEnabled(self.selected_station is not None)
-            self.state_label.setText("CONECTAT")
+            self.state_label.setText(t("state.connected"))
 
             # Remember the connected device for next launch
             if self.cast_controller.active_cast:
@@ -1280,13 +1293,15 @@ class MainWindow(QMainWindow):
                 self._auto_play_pending = False
                 self.play_station(self.selected_station)
         else:
-            if "conectează" in message:
+            # Yellow while a connection/scan is in progress, grey otherwise.
+            # Driven by the locale-independent kind so it works in any language.
+            if kind in ("connecting", "searching"):
                 self.set_led_state("yellow")
             else:
                 self.set_led_state("grey")
             self.volume_slider.setEnabled(False)
             self.play_btn.setEnabled(False)
-            self.state_label.setText("DECONECTAT")
+            self.state_label.setText(t("state.disconnected"))
 
     def on_playback_state_changed(self, player_state):
         self.state_label.setText(player_state)
@@ -1329,7 +1344,7 @@ class MainWindow(QMainWindow):
             
         # Update details on the playbar
         self.pb_title.setText(station_data['name'])
-        self.pb_desc.setText(station_data.get('description', 'Fără descriere'))
+        self.pb_desc.setText(station_data.get('description') or t("playbar.no_description"))
 
         # The track label belongs to the currently playing station; hide it when
         # the user merely selects a different station.
@@ -1499,7 +1514,7 @@ class MainWindow(QMainWindow):
                 json.dump(payload, f, indent=2, ensure_ascii=False)
         except Exception as e:
             print(f"[RadioCast] Eroare la salvarea stations.json: {e}")
-            QMessageBox.warning(self, "Eroare", f"Nu s-a putut salva lista de posturi:\n{e}")
+            QMessageBox.warning(self, t("common.error"), t("error.save_stations_failed", error=e))
 
     def add_station(self, data):
         """Adds a new station (mutating the shared list in place so the proxy sees it)."""
@@ -1536,8 +1551,8 @@ class MainWindow(QMainWindow):
         # Reset the playbar if the deleted station was selected.
         if self.selected_station and self.selected_station.get('id') == station_id:
             self.selected_station = None
-            self.pb_title.setText("Selectează un post")
-            self.pb_desc.setText("Niciun post selectat")
+            self.pb_title.setText(t("playbar.select_station"))
+            self.pb_desc.setText(t("playbar.no_station"))
             self.pb_track.hide()
             self.pb_track.clear()
             self.pb_logo.setPixmap(create_fallback_logo("").scaled(
@@ -1579,10 +1594,10 @@ class MainWindow(QMainWindow):
         # The button shows the theme you will switch TO
         if self.theme == 'dark':
             self.theme_btn.setText("☀")
-            self.theme_btn.setToolTip("Comută pe tema deschisă (light)")
+            self.theme_btn.setToolTip(t("theme.to_light"))
         else:
             self.theme_btn.setText("☾")
-            self.theme_btn.setToolTip("Comută pe tema închisă (dark)")
+            self.theme_btn.setToolTip(t("theme.to_dark"))
 
     def toggle_theme(self):
         self.theme = 'light' if self.theme == 'dark' else 'dark'
@@ -1594,6 +1609,77 @@ class MainWindow(QMainWindow):
         # Persist the choice
         self.config['theme'] = self.theme
         self.save_config()
+
+    # --- Language ---
+
+    def update_lang_button(self):
+        # The button shows the language you will switch TO.
+        other = "en" if i18n.current_language() == "ro" else "ro"
+        self.lang_btn.setText(other.upper())
+        self.lang_btn.setToolTip(t("lang.toggle_tooltip"))
+
+    def toggle_language(self):
+        new_lang = "en" if i18n.current_language() == "ro" else "ro"
+        i18n.set_language(new_lang)
+        self.config['language'] = new_lang
+        self.save_config()
+        self.retranslate_ui()
+
+    def retranslate_ui(self):
+        """Re-applies every static UI string in the active language. Called when
+        the user switches language at runtime, so no restart is needed."""
+        # Window / sidebar
+        self.update_lang_button()
+        self.update_theme_button()
+        self.cast_section_label.setText(t("sidebar.devices"))
+        self.scan_btn.setText(t("sidebar.scan"))
+        self.status_title.setText(t("sidebar.connection_status"))
+        self.settings_label.setText(t("sidebar.settings"))
+        self.port_label.setText(t("sidebar.proxy_port"))
+        self.apply_port_btn.setText(t("sidebar.apply"))
+        self.help_note.setText(t("sidebar.help_note"))
+
+        # The "Disconnected" placeholder is the first device-list row when idle.
+        if self.device_list.count() and self.device_list.item(0):
+            self.device_list.item(0).setText(t("sidebar.disconnected_item"))
+
+        # Content header
+        self.search_input.setPlaceholderText(t("content.search_ph"))
+        self.fav_filter_btn.setText(t("content.fav_filter"))
+        self.manage_btn.setText(t("content.manage"))
+        self.manage_btn.setToolTip(t("content.manage_tooltip"))
+
+        # Connection status text + playback state, only when not actively connected
+        # (a live message from the controller stays as-is until the next event).
+        if not self._is_connected:
+            self.status_label.setText(t("sidebar.not_connected"))
+            self.state_label.setText(t("state.disconnected"))
+        else:
+            self.state_label.setText(t("state.connected"))
+
+        # Playbar details: refresh from the selected station, or the placeholder.
+        if self.selected_station:
+            self.pb_title.setText(self.selected_station['name'])
+            self.pb_desc.setText(self.selected_station.get('description') or t("playbar.no_description"))
+        else:
+            self.pb_title.setText(t("playbar.select_station"))
+            self.pb_desc.setText(t("playbar.no_station"))
+
+        # Station cards: re-localize each card's favorite tooltip and genre fallback.
+        for card in self.card_widgets.values():
+            card.update_fav_icon()
+            if not card.station_data.get('genre'):
+                card.genre_label.setText(t("common.general"))
+
+        # Tray menu actions
+        if self.tray and self.tray.contextMenu():
+            actions = self.tray.contextMenu().actions()
+            for action in actions:
+                role = action.data()
+                if role == "show":
+                    action.setText(t("tray.show"))
+                elif role == "quit":
+                    action.setText(t("tray.quit"))
 
     def save_config(self):
         """Persists the in-memory config (including theme) to config.json."""
@@ -1612,7 +1698,7 @@ class MainWindow(QMainWindow):
         """Restarts the proxy server on the port chosen in the UI and persists it."""
         new_port = self.port_spin.value()
         if new_port == self.proxy_server.port:
-            self.status_label.setText(f"Proxy-ul foloseste deja portul {new_port}.")
+            self.status_label.setText(t("proxy.already_using", port=new_port))
             return
 
         # Remember current playback so we can resume it on the new port
@@ -1624,7 +1710,7 @@ class MainWindow(QMainWindow):
             self.proxy_server.port = new_port
             self.proxy_server.start()
         except Exception as e:
-            self.status_label.setText(f"Nu s-a putut schimba portul: {e}")
+            self.status_label.setText(t("proxy.change_failed", error=e))
             return
 
         # The proxy may auto-increment if the chosen port was busy; reflect the real one
@@ -1634,9 +1720,9 @@ class MainWindow(QMainWindow):
         self.save_config()
 
         if actual_port != new_port:
-            self.status_label.setText(f"Portul {new_port} era ocupat. Proxy-ul foloseste {actual_port}.")
+            self.status_label.setText(t("proxy.port_busy", port=new_port, actual=actual_port))
         else:
-            self.status_label.setText(f"Proxy-ul ruleaza acum pe portul {actual_port}.")
+            self.status_label.setText(t("proxy.now_using", port=actual_port))
 
         # Re-stream the active station so the Chromecast picks up the new proxy URL
         if was_playing and station and station.get('proxy') and self.cast_controller.active_cast:
@@ -1686,10 +1772,12 @@ class MainWindow(QMainWindow):
         self.tray.setToolTip("RadioChromecast")
 
         menu = QMenu()
-        show_action = menu.addAction("Afișează")
+        show_action = menu.addAction(t("tray.show"))
+        show_action.setData("show")  # role tag so retranslate_ui can find it
         show_action.triggered.connect(self.show_from_tray)
         menu.addSeparator()
-        quit_action = menu.addAction("Ieșire")
+        quit_action = menu.addAction(t("tray.quit"))
+        quit_action.setData("quit")
         quit_action.triggered.connect(self.quit_app)
         self.tray.setContextMenu(menu)
 
@@ -1734,7 +1822,7 @@ class MainWindow(QMainWindow):
             self.hide()
             self.tray.showMessage(
                 "RadioChromecast",
-                "Aplicația rulează în continuare în zona de notificări.",
+                t("tray.running_background"),
                 self.app_icon, 3000
             )
             return
