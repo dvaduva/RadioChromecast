@@ -1,0 +1,116 @@
+{
+  "stations": [
+    {
+      "id": "radio-romania-actualitati",
+      "name": "Radio România Actualități",
+      "description": "Postul public de știri și informații",
+      "genre": "Știri",
+      "url": "https://stream4.srr.ro:8443/romania-actualitati",
+      "logo": null,
+      "content_type": "audio/aac",
+      "proxy": true
+    },
+    {
+      "id": "europa-fm",
+      "name": "Europa FM",
+      "description": "Cele mai bune hituri ale momentului",
+      "genre": "Pop / Hituri",
+      "url": "https://astreaming.europafm.ro:8443/EuropaFM_aac",
+      "logo": "https://www.europafm.ro/wp-content/themes/efm-2025/img/logo-230x70.png",
+      "content_type": "audio/aac",
+      "proxy": true
+    },
+    {
+      "id": "kiss-fm",
+      "name": "Kiss FM",
+      "description": "Hituri non-stop",
+      "genre": "Pop / Dance",
+      "url": "https://live.kissfm.ro/kissfm.aacp",
+      "logo": "https://api.kissfm.ro/resized/media-manager/2024/04/08/kissfm-inverted_20240408_155643_cm1uoycz.svg",
+      "content_type": "audio/aac"
+    },
+    {
+      "id": "pro-fm",
+      "name": "Pro FM",
+      "description": "Muzică pop internațională",
+      "genre": "Pop",
+      "url": "https://edge126.rcs-rds.ro/profm/profm.mp3",
+      "logo": "https://www.profm.ro/static/theme-repo/bin/images/profm-logo.svg",
+      "content_type": "audio/mpeg"
+    },
+    {
+      "id": "magic-fm",
+      "name": "Magic FM",
+      "description": "Cele mai frumoase melodii",
+      "genre": "Adult Contemporary",
+      "url": "https://live.magicfm.ro/magicfm.aacp",
+      "logo": "https://api.magicfm.ro/resized/media-manager/2024/10/03/magicfm-logo_20241003_183759.png",
+      "content_type": "audio/aac"
+    },
+    {
+      "id": "virgin-radio",
+      "name": "Virgin Radio",
+      "description": "Rock și pop alternativ",
+      "genre": "Rock / Pop",
+      "url": "https://astreaming.edi.ro:8443/VirginRadio_aac",
+      "logo": "https://virginradio.ro/wp-content/themes/virgin_v3/img/logo.png",
+      "content_type": "audio/aac",
+      "proxy": true
+    },
+    {
+      "id": "radio-zu",
+      "name": "Radio ZU",
+      "description": "Cele mai noi hituri românești și internaționale",
+      "genre": "Pop / Hituri",
+      "url": "http://zuicast.digitalag.ro:9420/zu",
+      "logo": "https://www.google.com/s2/favicons?domain=radiozu.ro&sz=128",
+      "content_type": "audio/aac"
+    },
+    {
+      "id": "digi-fm",
+      "name": "Digi FM",
+      "description": "Muzică pentru oameni inteligenți",
+      "genre": "Adult Contemporary",
+      "url": "https://edge76.rcs-rds.ro/digifm/digifm.mp3",
+      "logo": "https://www.digifm.ro/static/theme-repo/bin/images/logo-digifm.svg",
+      "content_type": "audio/mpeg"
+    },
+    {
+      "id": "rock-fm",
+      "name": "Rock FM",
+      "description": "Rock clasic și modern",
+      "genre": "Rock",
+      "url": "https://live.rockfm.ro/rockfm.aacp",
+      "logo": "https://api.rockfm.ro/resized/media-manager/2024/04/08/rockfm-inverted_20240408_162811_egjobrng.svg",
+      "content_type": "audio/aac"
+    },
+    {
+      "id": "guerrilla-radio",
+      "name": "Radio Guerrilla",
+      "description": "Rock alternativ, talk și știri",
+      "genre": "Rock / Talk",
+      "url": "http://live.guerrillaradio.ro:8010/guerrilla.aac",
+      "logo": "https://www.guerrillaradio.ro/wp-content/themes/guerrilla/library/images/new_logo_header.png",
+      "content_type": "audio/aac",
+      "proxy": true
+    },
+    {
+      "id": "itsy-bitsy",
+      "name": "Itsy Bitsy",
+      "description": "Radio pentru copii și familie",
+      "genre": "Copii / Familie",
+      "url": "http://live.itsybitsy.ro:8000/itsybitsy",
+      "logo": "https://www.itsybitsy.ro/wp-content/uploads/ItsyBitsylogo.png"
+    },
+    {
+      "id": "vanilla-smooth-flavors",
+      "name": "Vanilla Radio — Smooth Flavors",
+      "description": "Smooth jazz, lounge și easy listening",
+      "genre": "Smooth Jazz / Lounge",
+      "url": "https://smooth.vanillaradio.com:8032/live",
+      "logo": "https://www.google.com/s2/favicons?domain=vanillaradio.com&sz=128",
+      "content_type": "audio/mpeg",
+      "proxy": true
+    }
+  ]
+}
