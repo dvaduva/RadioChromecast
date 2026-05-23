@@ -2,6 +2,7 @@ import sys
 import os
 import json
 import logging
+from logging.handlers import TimedRotatingFileHandler
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 
@@ -17,7 +18,13 @@ def setup_logging(base_dir):
     log_path = os.path.join(base_dir, 'radiochromecast.log')
     handlers = [logging.StreamHandler(sys.stdout)]
     try:
-        handlers.append(logging.FileHandler(log_path, mode='a', encoding='utf-8'))
+        # Rotate at midnight, keep the last 14 days. Older files (radiochromecast.log.YYYY-MM-DD)
+        # are deleted automatically so the log directory never grows unbounded.
+        file_handler = TimedRotatingFileHandler(
+            log_path, when='midnight', backupCount=14, encoding='utf-8'
+        )
+        file_handler.suffix = '%Y-%m-%d'
+        handlers.append(file_handler)
     except Exception as e:
         print(f"[RadioCast] Nu s-a putut crea fisierul de log ({log_path}): {e}")
 
