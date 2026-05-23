@@ -3,6 +3,7 @@ import sys
 import json
 import math
 import logging
+from datetime import datetime
 from string import Template
 import requests
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QPointF, QEvent, QTimer, QRect
@@ -852,6 +853,9 @@ class MainWindow(QMainWindow):
         self.card_widgets = {}
         self.downloaders = []
         self.metadata_fetcher = None
+        # Recently played history: newest first, capped at MAX_RECENT. Each entry
+        # is {'title', 'station', 'time'} so we can show relative timestamps.
+        self.recent_entries = []
 
         self.setWindowTitle("RadioChromecast")
         self.setMinimumSize(1000, 700)
@@ -907,36 +911,46 @@ class MainWindow(QMainWindow):
         sidebar_layout.setContentsMargins(20, 30, 20, 30)
         sidebar_layout.setSpacing(20)
 
-        # App Logo & Name
-        logo_container = QHBoxLayout()
-        logo_container.setSpacing(10)
-        
+        # App Logo & Name. The title sits on its own row above the compact
+        # control buttons so a longer name is never overlapped by them.
+        header_layout = QVBoxLayout()
+        header_layout.setSpacing(10)
+
         self.app_title = QLabel("RadioCast", self)
         self.app_title.setObjectName("appTitle")
-        logo_container.addWidget(self.app_title)
-        logo_container.addStretch()
+        header_layout.addWidget(self.app_title)
+
+        # Compact control buttons, right-aligned: About / language / theme.
+        controls_row = QHBoxLayout()
+        controls_row.setSpacing(8)
+        controls_row.addStretch()
 
         # About button (ⓘ) — opens the About dialog
         self.about_btn = QPushButton("ⓘ", self)
         self.about_btn.setObjectName("themeBtn")
+        self.about_btn.setFixedSize(34, 30)
         self.about_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.about_btn.setToolTip(t("about.tooltip"))
-        logo_container.addWidget(self.about_btn)
+        controls_row.addWidget(self.about_btn)
 
         # Language toggle button (RO / EN)
         self.lang_btn = QPushButton(self)
         self.lang_btn.setObjectName("themeBtn")
+        self.lang_btn.setFixedSize(40, 30)
         self.lang_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.update_lang_button()
-        logo_container.addWidget(self.lang_btn)
+        controls_row.addWidget(self.lang_btn)
 
         # Theme toggle button
         self.theme_btn = QPushButton(self)
         self.theme_btn.setObjectName("themeBtn")
+        self.theme_btn.setFixedSize(34, 30)
         self.theme_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.update_theme_button()
-        logo_container.addWidget(self.theme_btn)
-        sidebar_layout.addLayout(logo_container)
+        controls_row.addWidget(self.theme_btn)
+
+        header_layout.addLayout(controls_row)
+        sidebar_layout.addLayout(header_layout)
 
         # Separator line
         sep = QFrame()
@@ -1084,9 +1098,14 @@ class MainWindow(QMainWindow):
         self.recent_list.setObjectName("recentList")
         self.recent_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.recent_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.recent_placeholder = QListWidgetItem(t("sidebar.recent_empty"))
-        self.recent_list.addItem(self.recent_placeholder)
         recent_panel_layout.addWidget(self.recent_list)
+        self.render_recent()
+
+        # Refresh the relative timestamps ("5 min ago") periodically so they
+        # stay accurate without the user touching anything.
+        self.recent_timer = QTimer(self)
+        self.recent_timer.timeout.connect(self.render_recent)
+        self.recent_timer.start(30000)
 
         upper_layout.addWidget(recent_panel)
         main_layout.addLayout(upper_layout)
@@ -1584,16 +1603,40 @@ class MainWindow(QMainWindow):
             self.tray.showMessage(station_name, f"♪ {title}", self.app_icon, 5000)
 
     def add_recent_track(self, station_name, title):
-        """Prepends a track to the 'recently played' list, capped at MAX_RECENT."""
-        # Drop the "no track yet" placeholder on the first real entry.
-        if self.recent_placeholder is not None:
-            self.recent_list.clear()
-            self.recent_placeholder = None
+        """Prepends a track to the 'recently played' history, capped at MAX_RECENT."""
+        self.recent_entries.insert(0, {
+            'title': title,
+            'station': station_name,
+            'time': datetime.now(),
+        })
+        del self.recent_entries[self.MAX_RECENT:]
+        self.render_recent()
 
-        item = QListWidgetItem(f"♪ {title}\n{station_name}")
-        self.recent_list.insertItem(0, item)
-        while self.recent_list.count() > self.MAX_RECENT:
-            self.recent_list.takeItem(self.recent_list.count() - 1)
+    def format_relative_time(self, when):
+        """Returns a localized 'x min ago' style string for a past datetime."""
+        seconds = int((datetime.now() - when).total_seconds())
+        if seconds < 60:
+            return t("recent.just_now")
+        minutes = seconds // 60
+        if minutes < 60:
+            return t("recent.minute_ago") if minutes == 1 else t("recent.minutes_ago", n=minutes)
+        hours = minutes // 60
+        if hours < 24:
+            return t("recent.hour_ago") if hours == 1 else t("recent.hours_ago", n=hours)
+        days = hours // 24
+        return t("recent.day_ago") if days == 1 else t("recent.days_ago", n=days)
+
+    def render_recent(self):
+        """Rebuilds the recently-played list, refreshing each relative timestamp.
+        Called when a track is added, on a timer, and on language switch."""
+        self.recent_list.clear()
+        if not self.recent_entries:
+            self.recent_list.addItem(QListWidgetItem(t("sidebar.recent_empty")))
+            return
+        for entry in self.recent_entries:
+            rel = self.format_relative_time(entry['time'])
+            item = QListWidgetItem(f"♪ {entry['title']}\n{entry['station']} · {rel}")
+            self.recent_list.addItem(item)
 
     # --- Filtering and utility slots ---
 
@@ -1796,8 +1839,7 @@ class MainWindow(QMainWindow):
         self.scan_btn.setText(t("sidebar.scan"))
         self.status_title.setText(t("sidebar.connection_status"))
         self.recent_title.setText(t("sidebar.recent"))
-        if self.recent_placeholder is not None:
-            self.recent_placeholder.setText(t("sidebar.recent_empty"))
+        self.render_recent()
         self.settings_label.setText(t("sidebar.settings"))
         self.port_label.setText(t("sidebar.proxy_port"))
         self.apply_port_btn.setText(t("sidebar.apply"))
