@@ -44,7 +44,7 @@
       "description": "Cele mai frumoase melodii",
       "genre": "Adult Contemporary",
       "url": "https://live.magicfm.ro/magicfm.aacp",
-      "logo": "https://api.magicfm.ro/resized/media-manager/2024/10/03/magicfm-logo_20241003_183759.png",
+      "logo": "https://www.magicfm.ro/apple-touch-icon.png",
       "content_type": "audio/aac"
     },
     {
@@ -63,7 +63,7 @@
       "description": "Cele mai noi hituri românești și internaționale",
       "genre": "Pop / Hituri",
       "url": "http://zuicast.digitalag.ro:9420/zu",
-      "logo": "https://www.google.com/s2/favicons?domain=radiozu.ro&sz=128",
+      "logo": "https://radiozu.ro/favicon-96x96.png",
       "content_type": "audio/aac"
     },
     {
@@ -108,7 +108,7 @@
       "description": "Smooth jazz, lounge și easy listening",
       "genre": "Smooth Jazz / Lounge",
       "url": "https://smooth.vanillaradio.com:8032/live",
-      "logo": "https://www.google.com/s2/favicons?domain=vanillaradio.com&sz=128",
+      "logo": "https://www.getmeradio.com/stations/vanillaradio-smoothflavors-1294/logos/512x512.png",
       "content_type": "audio/mpeg",
       "proxy": true
     }
