@@ -1293,6 +1293,11 @@ class MainWindow(QMainWindow):
         if player_state in ["PLAYING", "BUFFERING"]:
             self.is_playing = True
             self.set_play_icon(True)
+            # Ensure "now playing" polling is running. On startup the device replays
+            # a stale IDLE status right after we start it, which stops the fetcher;
+            # restart it here once real playback begins so the track title appears.
+            if self.active_station and self.metadata_fetcher is None:
+                self.start_metadata(self.active_station['url'])
         else:
             self.is_playing = False
             self.set_play_icon(False)
