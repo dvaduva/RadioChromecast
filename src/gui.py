@@ -21,6 +21,9 @@ from i18n import t
 
 log = logging.getLogger('radiocast.gui')
 
+# Shown in the About dialog and the window title hover.
+APP_VERSION = "1.0.0"
+
 def get_resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
     try:
@@ -70,6 +73,10 @@ QFrame#sidebar {
 QFrame#playbar {
     background-color: $panel_bg;
     border-top: 1px solid $border;
+}
+QFrame#recentPanel {
+    background-color: $panel_bg;
+    border-left: 1px solid $border;
 }
 QScrollArea {
     border: none;
@@ -270,6 +277,9 @@ QLabel#sectionLabelMt { margin-top: 15px; }
 QFrame#statusFrame { background-color: $card_bg; border-radius: 8px; border: 1px solid $card_border; }
 QLabel#statusLabel { font-size: 12px; color: $text; }
 QLabel#helpNote { font-size: 11px; color: $text_faint; }
+QLabel#aboutVersion { font-size: 12px; font-weight: bold; color: #a78bfa; }
+QLabel#aboutBody { font-size: 13px; color: $text; }
+QLabel#aboutMeta { font-size: 12px; color: $text_muted; }
 QLabel#pbLogo { border-radius: 6px; background-color: $logo_bg; }
 QLabel#pbTitle { font-size: 14px; font-weight: bold; color: $text_strong; }
 QLabel#pbDesc { font-size: 11px; color: $text_muted; }
@@ -634,6 +644,67 @@ class StationManagerDialog(QDialog):
             self.refresh_list()
 
 
+class AboutDialog(QDialog):
+    """Simple 'About' window: app branding, version, description and credits."""
+
+    def __init__(self, parent=None, app_icon=None):
+        super().__init__(parent)
+        self.setWindowTitle(t("about.title"))
+        self.setMinimumWidth(420)
+        self.init_ui(app_icon)
+
+    def init_ui(self, app_icon):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 28, 28, 24)
+        layout.setSpacing(12)
+
+        # Logo + name header, centered
+        if app_icon is not None and not app_icon.isNull():
+            logo = QLabel(self)
+            logo.setPixmap(app_icon.pixmap(72, 72))
+            logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(logo)
+
+        name = QLabel("RadioCast", self)
+        name.setObjectName("appTitle")
+        name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(name)
+
+        version = QLabel(t("about.version", version=APP_VERSION), self)
+        version.setObjectName("aboutVersion")
+        version.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(version)
+
+        tagline = QLabel(t("about.tagline"), self)
+        tagline.setObjectName("aboutMeta")
+        tagline.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        tagline.setWordWrap(True)
+        layout.addWidget(tagline)
+
+        sep = QFrame(self)
+        sep.setObjectName("sep")
+        sep.setFrameShape(QFrame.Shape.HLine)
+        layout.addWidget(sep)
+
+        body = QLabel(t("about.description"), self)
+        body.setObjectName("aboutBody")
+        body.setWordWrap(True)
+        layout.addWidget(body)
+
+        author = QLabel(t("about.author"), self)
+        author.setObjectName("aboutMeta")
+        author.setWordWrap(True)
+        author.setOpenExternalLinks(True)
+        author.setTextFormat(Qt.TextFormat.RichText)
+        layout.addWidget(author)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
+        buttons.button(QDialogButtonBox.StandardButton.Close).setText(t("common.close"))
+        buttons.rejected.connect(self.accept)
+        buttons.accepted.connect(self.accept)
+        layout.addWidget(buttons)
+
+
 class StationCard(QFrame):
     """Individual widget representing a radio station in a card layout."""
     clicked = pyqtSignal(dict)
@@ -845,6 +916,13 @@ class MainWindow(QMainWindow):
         logo_container.addWidget(self.app_title)
         logo_container.addStretch()
 
+        # About button (ⓘ) — opens the About dialog
+        self.about_btn = QPushButton("ⓘ", self)
+        self.about_btn.setObjectName("themeBtn")
+        self.about_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.about_btn.setToolTip(t("about.tooltip"))
+        logo_container.addWidget(self.about_btn)
+
         # Language toggle button (RO / EN)
         self.lang_btn = QPushButton(self)
         self.lang_btn.setObjectName("themeBtn")
@@ -906,21 +984,6 @@ class MainWindow(QMainWindow):
         self.status_label.setWordWrap(True)
         status_frame_layout.addWidget(self.status_label)
         sidebar_layout.addWidget(self.status_frame)
-
-        # Recently played tracks (in-app history of the last few "now playing"
-        # titles, mirroring the Windows notifications).
-        self.recent_title = QLabel(t("sidebar.recent"), self)
-        self.recent_title.setObjectName("sectionLabelMt")
-        sidebar_layout.addWidget(self.recent_title)
-
-        self.recent_list = QListWidget(self)
-        self.recent_list.setObjectName("recentList")
-        self.recent_list.setMaximumHeight(150)
-        self.recent_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.recent_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.recent_placeholder = QListWidgetItem(t("sidebar.recent_empty"))
-        self.recent_list.addItem(self.recent_placeholder)
-        sidebar_layout.addWidget(self.recent_list)
 
         # Settings section: proxy port
         self.settings_label = QLabel(t("sidebar.settings"), self)
@@ -1001,6 +1064,31 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(scroll_area)
 
         upper_layout.addWidget(content_widget)
+
+        # --- Recently played panel (right side) ---
+        # In-app history of the last few "now playing" titles, mirroring the
+        # Windows notifications. Lives in its own panel so the left sidebar stays
+        # focused on the Chromecast connection.
+        recent_panel = QFrame(self)
+        recent_panel.setObjectName("recentPanel")
+        recent_panel.setFixedWidth(240)
+        recent_panel_layout = QVBoxLayout(recent_panel)
+        recent_panel_layout.setContentsMargins(20, 30, 20, 30)
+        recent_panel_layout.setSpacing(12)
+
+        self.recent_title = QLabel(t("sidebar.recent"), self)
+        self.recent_title.setObjectName("sectionLabel")
+        recent_panel_layout.addWidget(self.recent_title)
+
+        self.recent_list = QListWidget(self)
+        self.recent_list.setObjectName("recentList")
+        self.recent_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.recent_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.recent_placeholder = QListWidgetItem(t("sidebar.recent_empty"))
+        self.recent_list.addItem(self.recent_placeholder)
+        recent_panel_layout.addWidget(self.recent_list)
+
+        upper_layout.addWidget(recent_panel)
         main_layout.addLayout(upper_layout)
 
         # --- Playbar (Bottom Spotify-style playback controls) ---
@@ -1170,6 +1258,9 @@ class MainWindow(QMainWindow):
 
         # Language toggle
         self.lang_btn.clicked.connect(self.toggle_language)
+
+        # About dialog
+        self.about_btn.clicked.connect(self.open_about)
 
         # Proxy port apply
         self.apply_port_btn.clicked.connect(self.apply_proxy_port)
@@ -1563,6 +1654,10 @@ class MainWindow(QMainWindow):
         """Opens the dialog for adding, editing and deleting radio stations."""
         StationManagerDialog(self).exec()
 
+    def open_about(self):
+        """Opens the About dialog with app info and credits."""
+        AboutDialog(self, app_icon=self.app_icon).exec()
+
     def save_stations(self):
         """Persists the current station list back to stations.json (without the
         runtime-only 'favorite' flag, which lives in favorites.json)."""
@@ -1696,6 +1791,7 @@ class MainWindow(QMainWindow):
         # Window / sidebar
         self.update_lang_button()
         self.update_theme_button()
+        self.about_btn.setToolTip(t("about.tooltip"))
         self.cast_section_label.setText(t("sidebar.devices"))
         self.scan_btn.setText(t("sidebar.scan"))
         self.status_title.setText(t("sidebar.connection_status"))

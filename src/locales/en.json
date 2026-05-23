@@ -73,6 +73,13 @@
   "theme.to_dark": "Switch to dark theme",
   "lang.toggle_tooltip": "Change language (Română / English)",
 
+  "about.tooltip": "About the app",
+  "about.title": "About RadioCast",
+  "about.version": "Version {version}",
+  "about.tagline": "Listen to your favorite radio stations on Chromecast.",
+  "about.description": "RadioCast streams online radio stations to your Chromecast devices, with live track metadata, favorites and now-playing notifications.",
+  "about.author": "Built with PyQt6.<br>© 2026 RadioCast.",
+
   "status.reconnecting": "Reconnecting to last device: {name}...",
 
   "proxy.already_using": "The proxy is already using port {port}.",

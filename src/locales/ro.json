@@ -73,6 +73,13 @@
   "theme.to_dark": "Comută pe tema închisă (dark)",
   "lang.toggle_tooltip": "Schimbă limba (Română / English)",
 
+  "about.tooltip": "Despre aplicație",
+  "about.title": "Despre RadioCast",
+  "about.version": "Versiunea {version}",
+  "about.tagline": "Ascultă posturile tale de radio preferate pe Chromecast.",
+  "about.description": "RadioCast transmite posturi de radio online către dispozitivele tale Chromecast, cu metadate în timp real, favorite și notificări pentru piesa curentă.",
+  "about.author": "Dezvoltat cu PyQt6.<br>© 2026 RadioCast.",
+
   "status.reconnecting": "Se reconectează la ultimul dispozitiv: {name}...",
 
   "proxy.already_using": "Proxy-ul foloseste deja portul {port}.",
