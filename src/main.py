@@ -47,7 +47,8 @@ def setup_logging(base_dir):
 DEFAULT_CONFIG = {
     "proxy_port": 8090,
     "theme": "dark",
-    "language": "ro"
+    "language": "ro",
+    "favorites": []
 }
 
 def get_base_dir():

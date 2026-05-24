@@ -1664,26 +1664,30 @@ class MainWindow(QMainWindow):
         return os.path.join(base_dir, 'favorites.json')
 
     def load_favorites(self):
-        """Marks stations as favorite based on the saved favorites.json id list."""
-        path = self.get_favorites_path()
-        if not os.path.exists(path):
-            return
-        try:
-            with open(path, 'r', encoding='utf-8') as f:
-                favorite_ids = set(json.load(f))
-            for station in self.stations:
-                station['favorite'] = station.get('id') in favorite_ids
-        except Exception as e:
-            print(f"[RadioCast] Eroare la citirea favoritelor: {e}")
+        """Marks stations as favorite based on the 'favorites' id list in config.json.
+
+        Falls back to the legacy favorites.json once, to migrate older installs."""
+        favorite_ids = self.config.get('favorites')
+        if favorite_ids is None:
+            # Migration: pull from legacy favorites.json if present.
+            path = self.get_favorites_path()
+            if os.path.exists(path):
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        favorite_ids = json.load(f)
+                except Exception as e:
+                    print(f"[RadioCast] Eroare la citirea favoritelor: {e}")
+                    favorite_ids = []
+            else:
+                favorite_ids = []
+        favorite_ids = set(favorite_ids)
+        for station in self.stations:
+            station['favorite'] = station.get('id') in favorite_ids
 
     def save_favorites(self):
-        """Persists the list of favorite station ids to favorites.json."""
-        favorite_ids = [s['id'] for s in self.stations if s.get('favorite')]
-        try:
-            with open(self.get_favorites_path(), 'w', encoding='utf-8') as f:
-                json.dump(favorite_ids, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            print(f"[RadioCast] Eroare la salvarea favoritelor: {e}")
+        """Persists the list of favorite station ids inside config.json."""
+        self.config['favorites'] = [s['id'] for s in self.stations if s.get('favorite')]
+        self.save_config()
 
     def on_favorite_toggled(self, station_data, is_favorite):
         # station_data is the same dict held in self.stations, so the flag is already updated
