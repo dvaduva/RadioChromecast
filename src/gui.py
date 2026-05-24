@@ -719,6 +719,10 @@ class StationCard(QFrame):
         self.setObjectName("stationCard")
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setProperty("selected", "false")
+        # Keep a constant tile width so cards never stretch to fill the row,
+        # even when a single station is shown.
+        self.setFixedWidth(280)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
 
         self.init_ui()
 
@@ -1236,6 +1240,10 @@ class MainWindow(QMainWindow):
                 downloader.start()
                 self.downloaders.append(downloader)
 
+        # Trailing spacer column absorbs leftover width so fixed-width cards
+        # stay left-aligned instead of stretching across the row.
+        self.grid_layout.setColumnStretch(columns, 1)
+
     def reflow_grid(self):
         """Re-positions existing cards in sorted order without recreating them."""
         # Detach all cards from the layout (widgets are kept alive in card_widgets)
@@ -1247,6 +1255,9 @@ class MainWindow(QMainWindow):
             card = self.card_widgets.get(station['id'])
             if card is not None:
                 self.grid_layout.addWidget(card, idx // columns, idx % columns)
+
+        # Keep trailing spacer column so cards remain left-aligned, fixed width.
+        self.grid_layout.setColumnStretch(columns, 1)
 
     def on_logo_downloaded(self, station_id, image_data):
         pixmap = QPixmap()
