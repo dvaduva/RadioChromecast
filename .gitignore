@@ -1,5 +1,5 @@
-dist/
-build/
-src/__pycache__/
-config.json
-radiochromecast.log
+/dist
+/build
+/src/__pycache__/
+/radiochromecast.log*
+/config.json
