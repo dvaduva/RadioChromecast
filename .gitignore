@@ -1,5 +1,5 @@
 /dist
 /build
 /src/__pycache__/
-/radiochromecast.log*
+/radiochromecast.lo*
 /config.json

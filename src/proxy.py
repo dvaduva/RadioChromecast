@@ -7,12 +7,18 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 log = logging.getLogger('radiocast.proxy')
 
-def get_local_ip():
-    """Detects the computer's primary local IP address routed to the internet."""
+def get_local_ip(target='10.254.254.254'):
+    """Detects the local IP address the OS would use to reach ``target``.
+
+    Pass the Chromecast's host here so the returned IP belongs to the LAN
+    interface that actually routes to the device. Using the default route
+    instead can pick a VPN/virtual adapter (e.g. 10.x.x.x) that the Chromecast
+    cannot reach, which makes proxied streams fail instantly with IDLE.
+    """
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         # Doesn't need to be reachable, just triggers routing resolution
-        s.connect(('10.254.254.254', 1))
+        s.connect((target, 1))
         ip = s.getsockname()[0]
     except Exception:
         ip = '127.0.0.1'
@@ -144,6 +150,13 @@ class RadioProxyServer:
             self.server.server_close()
         self.is_running = False
         
-    def get_proxy_url(self, station_id):
-        """Returns the local proxy URL for a given station ID."""
-        return f"http://{self.ip}:{self.port}/proxy/{station_id}"
+    def get_proxy_url(self, station_id, cast_host=None):
+        """Returns the local proxy URL for a given station ID.
+
+        When ``cast_host`` (the Chromecast's IP) is given, the URL uses the
+        local interface that routes to that device rather than the default
+        route. This avoids advertising a VPN/virtual adapter address the
+        Chromecast cannot reach.
+        """
+        ip = get_local_ip(cast_host) if cast_host else self.ip
+        return f"http://{ip}:{self.port}/proxy/{station_id}"

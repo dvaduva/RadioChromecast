@@ -1514,7 +1514,8 @@ class MainWindow(QMainWindow):
         if self.cast_controller.active_cast:
             # Construct Stream URL: route through proxy if proxy flag is true
             if station_data.get('proxy', False):
-                stream_url = self.proxy_server.get_proxy_url(station_data['id'])
+                stream_url = self.proxy_server.get_proxy_url(
+                    station_data['id'], cast_host=self.cast_controller.active_cast_host())
             else:
                 stream_url = station_data['url']
 

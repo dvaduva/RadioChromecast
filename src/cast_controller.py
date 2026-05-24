@@ -174,6 +174,21 @@ class CastController(QObject):
         self.disconnect_active()
         self._stop_browser()
 
+    def active_cast_host(self):
+        """Returns the IP address of the connected Chromecast, or None.
+
+        Used so the local proxy can advertise an IP on the same LAN interface
+        that routes to the device (avoiding VPN/virtual adapter addresses).
+        """
+        cast = self.active_cast
+        if not cast:
+            return None
+        info = getattr(cast, 'cast_info', None)
+        if info is not None and getattr(info, 'host', None):
+            return info.host
+        sock = getattr(cast, 'socket_client', None)
+        return getattr(sock, 'host', None)
+
     def play_stream(self, url, content_type="audio/mpeg", title="Radio Stream"):
         """Sends the audio stream URL to the connected Chromecast device."""
         if not self.active_cast:
