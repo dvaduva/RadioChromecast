@@ -6,8 +6,8 @@ import logging
 from datetime import datetime
 from string import Template
 import requests
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QPointF, QEvent, QTimer, QRect
-from PyQt6.QtGui import QPainter, QColor, QFont, QPixmap, QIcon, QAction, QPolygonF, QPen, QGuiApplication
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QPointF, QEvent, QTimer, QRect, QRectF
+from PyQt6.QtGui import QPainter, QColor, QFont, QPixmap, QIcon, QAction, QPolygonF, QPen, QGuiApplication, QPainterPath
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QLineEdit, QSlider, QScrollArea, QListWidget,
@@ -300,12 +300,12 @@ QPushButton#favBtn:hover {
     background-color: $card_hover_bg;
     border-radius: 14px;
 }
-/* Theme toggle */
+/* Header icon buttons (About / language / theme) */
 QPushButton#themeBtn {
     background-color: $btn_bg;
     border: 1px solid $btn_border;
     border-radius: 8px;
-    padding: 4px 6px;
+    padding: 0px;
     color: $text;
 }
 QPushButton#themeBtn:hover {
@@ -468,6 +468,118 @@ def create_star_icon(filled):
     painter.drawPolygon(star)
     painter.end()
     return pixmap
+
+
+def create_info_icon(color, size=20):
+    """Clean outlined info (i) glyph for the About button."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    c = QColor(color)
+    pen = QPen(c)
+    pen.setWidthF(max(1.6, size * 0.09))
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    painter.setPen(pen)
+    painter.setBrush(Qt.GlobalColor.transparent)
+
+    margin = size * 0.12
+    painter.drawEllipse(QRectF(margin, margin, size - 2 * margin, size - 2 * margin))
+
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(c)
+    cx = size / 2.0
+    # Dot
+    painter.drawEllipse(QPointF(cx, size * 0.34), size * 0.055, size * 0.055)
+    # Stem
+    stem_w = size * 0.11
+    painter.drawRoundedRect(
+        QRectF(cx - stem_w / 2, size * 0.44, stem_w, size * 0.30),
+        stem_w / 2, stem_w / 2,
+    )
+    painter.end()
+    return pixmap
+
+
+def create_sun_icon(color, size=20):
+    """Sun with rays — shown when switching to the light theme."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    c = QColor(color)
+    cx = cy = size / 2.0
+    core_r = size * 0.18
+    ray_inner = size * 0.28
+    ray_outer = size * 0.42
+
+    pen = QPen(c)
+    pen.setWidthF(max(1.5, size * 0.08))
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    painter.setPen(pen)
+    for i in range(8):
+        angle = i * math.pi / 4
+        painter.drawLine(
+            QPointF(cx + ray_inner * math.cos(angle), cy + ray_inner * math.sin(angle)),
+            QPointF(cx + ray_outer * math.cos(angle), cy + ray_outer * math.sin(angle)),
+        )
+
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(c)
+    painter.drawEllipse(QPointF(cx, cy), core_r, core_r)
+    painter.end()
+    return pixmap
+
+
+def create_moon_icon(color, size=20):
+    """Crescent moon — shown when switching to the dark theme."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    c = QColor(color)
+    cx = cy = size / 2.0
+    r = size * 0.34
+
+    full = QPainterPath()
+    full.addEllipse(QPointF(cx - size * 0.04, cy), r, r)
+    cut = QPainterPath()
+    cut.addEllipse(QPointF(cx + size * 0.14, cy - size * 0.06), r * 0.92, r * 0.92)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(c)
+    painter.drawPath(full.subtracted(cut))
+    painter.end()
+    return pixmap
+
+
+def create_lang_icon(code, color, size=20):
+    """Compact language badge (EN / RO) painted as a crisp icon."""
+    w, h = size + 8, size
+    pixmap = QPixmap(w, h)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+    c = QColor(color)
+    # Subtle rounded outline so the badge matches the other outline icons
+    pen = QPen(c)
+    pen.setWidthF(max(1.4, size * 0.08))
+    painter.setPen(pen)
+    painter.setBrush(Qt.GlobalColor.transparent)
+    inset = pen.widthF() / 2 + 0.5
+    painter.drawRoundedRect(QRectF(inset, inset, w - 2 * inset, h - 2 * inset), 4, 4)
+
+    font = QFont('Segoe UI', max(8, int(size * 0.48)), QFont.Weight.DemiBold)
+    painter.setFont(font)
+    painter.setPen(c)
+    painter.drawText(QRect(0, 0, w, h), Qt.AlignmentFlag.AlignCenter, code.upper())
+    painter.end()
+    return pixmap
+
 
 def slugify(name):
     """Turns a station name into a url-safe ascii id (e.g. 'Radio ZU' -> 'radio-zu')."""
@@ -1269,10 +1381,11 @@ class MainWindow(QMainWindow):
         controls_row.setSpacing(8)
         controls_row.addStretch()
 
-        # About button (ⓘ) — opens the About dialog
-        self.about_btn = QPushButton("ⓘ", self)
+        # About button — opens the About dialog
+        self.about_btn = QPushButton(self)
         self.about_btn.setObjectName("themeBtn")
-        self.about_btn.setFixedSize(42, 36)
+        self.about_btn.setFixedSize(36, 36)
+        self.about_btn.setIconSize(QSize(18, 18))
         self.about_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.about_btn.setToolTip(t("about.tooltip"))
         controls_row.addWidget(self.about_btn)
@@ -1280,19 +1393,20 @@ class MainWindow(QMainWindow):
         # Language toggle button (RO / EN)
         self.lang_btn = QPushButton(self)
         self.lang_btn.setObjectName("themeBtn")
-        self.lang_btn.setFixedSize(48, 36)
+        self.lang_btn.setFixedSize(44, 36)
+        self.lang_btn.setIconSize(QSize(26, 18))
         self.lang_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.update_lang_button()
         controls_row.addWidget(self.lang_btn)
 
         # Theme toggle button
         self.theme_btn = QPushButton(self)
         self.theme_btn.setObjectName("themeBtn")
-        self.theme_btn.setFixedSize(42, 36)
+        self.theme_btn.setFixedSize(36, 36)
+        self.theme_btn.setIconSize(QSize(18, 18))
         self.theme_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.update_theme_button()
         controls_row.addWidget(self.theme_btn)
 
+        self.update_header_icons()
         header_layout.addLayout(controls_row)
         sidebar_layout.addLayout(header_layout)
 
@@ -2206,13 +2320,27 @@ class MainWindow(QMainWindow):
 
     # --- Theme ---
 
+    def _header_icon_color(self):
+        return self.palette_colors['text']
+
+    def update_header_icons(self):
+        """Refresh About / language / theme icons (color follows active theme)."""
+        self.update_about_button()
+        self.update_lang_button()
+        self.update_theme_button()
+
+    def update_about_button(self):
+        self.about_btn.setIcon(QIcon(create_info_icon(self._header_icon_color())))
+        self.about_btn.setToolTip(t("about.tooltip"))
+
     def update_theme_button(self):
         # The button shows the theme you will switch TO
+        color = self._header_icon_color()
         if self.theme == 'dark':
-            self.theme_btn.setText("☀")
+            self.theme_btn.setIcon(QIcon(create_sun_icon(color)))
             self.theme_btn.setToolTip(t("theme.to_light"))
         else:
-            self.theme_btn.setText("☾")
+            self.theme_btn.setIcon(QIcon(create_moon_icon(color)))
             self.theme_btn.setToolTip(t("theme.to_dark"))
 
     def toggle_theme(self):
@@ -2221,7 +2349,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(build_stylesheet(self.theme))
         # Redraw painter-based icons whose colors depend on the theme
         self.set_mute_icon(self.is_muted)
-        self.update_theme_button()
+        self.update_header_icons()
         # Persist the choice
         self.config['theme'] = self.theme
         self.save_config()
@@ -2231,7 +2359,7 @@ class MainWindow(QMainWindow):
     def update_lang_button(self):
         # The button shows the language you will switch TO.
         other = "en" if i18n.current_language() == "ro" else "ro"
-        self.lang_btn.setText(other.upper())
+        self.lang_btn.setIcon(QIcon(create_lang_icon(other, self._header_icon_color())))
         self.lang_btn.setToolTip(t("lang.toggle_tooltip"))
 
     def toggle_language(self):
@@ -2245,9 +2373,7 @@ class MainWindow(QMainWindow):
         """Re-applies every static UI string in the active language. Called when
         the user switches language at runtime, so no restart is needed."""
         # Window / sidebar
-        self.update_lang_button()
-        self.update_theme_button()
-        self.about_btn.setToolTip(t("about.tooltip"))
+        self.update_header_icons()
         self.cast_section_label.setText(t("sidebar.devices"))
         self.scan_btn.setText(t("sidebar.scan"))
         self.status_title.setText(t("sidebar.connection_status"))
