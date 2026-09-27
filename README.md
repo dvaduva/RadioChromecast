@@ -31,20 +31,29 @@ Search online radio by country and genre, then add the stations you want:
 
 ## Requirements
 
-- Windows
+- Windows, Linux, or macOS
 - Python 3.10 or newer
-- A Chromecast (or Cast-enabled speaker) on the same Wi-Fi network as the computer
+- A Chromecast (or Cast-enabled speaker) on the same network as the computer
 
 Python packages are listed in `requirements.txt`:
 
 - PyQt6
 - pychromecast
 - requests
-- PyInstaller (only needed to build the executable)
+- PyInstaller (only needed to build a standalone executable)
 
 ## Run from source
 
-From the project folder:
+From the project folder, on Linux or macOS:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python src/main.py
+```
+
+On Windows:
 
 ```bat
 py -3 -m venv .venv
@@ -55,9 +64,9 @@ python src\main.py
 
 On first launch the app creates `config.json` next to the project (or next to the executable, if you run a build). That file stores the theme, language, favorites, proxy port, and the last device. It is not part of the git repository.
 
-## Build a Windows executable
+## Build a standalone app
 
-`build.bat` creates a virtual environment if needed, installs dependencies, and runs PyInstaller:
+On Windows, `build.bat` creates a virtual environment if needed, installs dependencies, and runs PyInstaller:
 
 ```bat
 build.bat
@@ -65,11 +74,17 @@ build.bat
 
 The executable is written to `dist\RadioChromecast.exe`. The script also copies `stations.json` beside it. `config.json` and the log file are created in that same folder when you start the app.
 
+`RadioChromecast.spec` is written for that Windows build: it uses Windows paths (`src\main.py`) and a Windows icon (`src\icon.ico`). There is no Linux or macOS build script in this repo. To package the app on those systems, run PyInstaller there and point it at `src/main.py`. A Mac app bundle should use an `.icns` icon instead of `src\icon.ico`.
+
 ## Network and firewall
 
-The computer and the Chromecast must be on the same network. Some stations are sent to the device as a direct URL. Others are marked with `"proxy": true` and are relayed by a small HTTP server on this computer (port **8090** by default). Chromecast has to be able to reach that port.
+The computer and the Chromecast must be on the same network. Some stations are sent to the device as a direct URL. Others are marked with `"proxy": true` and are relayed by a small HTTP server on this computer (port **8090** by default). Chromecast has to be able to reach that port. You can change the port in the app; if you do, allow that port through the firewall as well.
 
-If playback stops immediately, Windows Firewall is a common cause. Run `fix-firewall.bat` as administrator. It allows `RadioChromecast.exe` and inbound TCP on port 8090 for private and domain networks. You can change the proxy port in the app; if you do, update the firewall rule to match.
+On Windows, if playback stops immediately, Windows Firewall is a common cause. Run `fix-firewall.bat` as administrator. It allows `RadioChromecast.exe` and inbound TCP on port 8090 for private and domain networks. That script is Windows-only.
+
+On Linux, Chromecast discovery uses mDNS, so Avahi needs to be running. If a firewall is enabled, allow inbound TCP on the proxy port.
+
+On macOS, discovery uses Bonjour. If the application firewall is on, allow incoming connections for the app (or for Python, when you run from source).
 
 ## Station list
 
