@@ -14,7 +14,8 @@ from PyQt6.QtWidgets import (
     QSpinBox, QFrame, QSizePolicy, QSpacerItem, QGraphicsDropShadowEffect,
     QSystemTrayIcon, QMenu,
     QDialog, QDialogButtonBox, QFormLayout, QComboBox, QCheckBox,
-    QPlainTextEdit, QMessageBox, QListWidgetItem, QAbstractItemView
+    QPlainTextEdit, QMessageBox, QListWidgetItem, QAbstractItemView,
+    QCompleter,
 )
 from metadata import MetadataFetcher
 import i18n
@@ -97,6 +98,52 @@ QComboBox QAbstractItemView {
     background-color: $card_bg;
     color: $text;
     border: 1px solid $card_border;
+    selection-background-color: #7c3aed;
+    selection-color: #ffffff;
+}
+/* Searchable country / genre combos in the online search dialog */
+QComboBox#searchCombo {
+    background-color: $card_bg;
+    border: 1px solid $card_border;
+    border-radius: 8px;
+    padding: 8px 12px;
+    padding-right: 30px;
+    color: $text;
+    min-height: 22px;
+    font-size: 13px;
+}
+QComboBox#searchCombo:hover {
+    border-color: #a78bfa;
+}
+QComboBox#searchCombo:focus, QComboBox#searchCombo:on {
+    border: 1px solid #7c3aed;
+}
+QComboBox#searchCombo:disabled {
+    color: $text_faint;
+    background-color: $logo_bg;
+}
+QComboBox#searchCombo::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: 28px;
+    border: none;
+    background: transparent;
+}
+QComboBox#searchCombo QLineEdit {
+    background: transparent;
+    border: none;
+    padding: 0px;
+    color: $text;
+    selection-background-color: #7c3aed;
+    selection-color: #ffffff;
+}
+QComboBox#searchCombo QAbstractItemView {
+    background-color: $card_bg;
+    color: $text;
+    border: 1px solid $card_border;
+    border-radius: 8px;
+    padding: 4px;
+    outline: none;
     selection-background-color: #7c3aed;
     selection-color: #ffffff;
 }
@@ -596,6 +643,79 @@ def slugify(name):
 CONTENT_TYPES = ["audio/mpeg", "audio/aac", "audio/ogg", "audio/x-mpegurl"]
 
 
+class SearchableComboBox(QComboBox):
+    """Editable combo with contains-filter completer for long country/genre lists."""
+
+    _DROPDOWN_WIDTH = 30
+
+    def __init__(self, parent=None, placeholder=""):
+        super().__init__(parent)
+        self.setObjectName("searchCombo")
+        self.setEditable(True)
+        self.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        completer = QCompleter(self.model(), self)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setMaxVisibleItems(14)
+        self.setCompleter(completer)
+
+        le = self.lineEdit()
+        if le is not None:
+            le.setPlaceholderText(placeholder)
+            le.setClearButtonEnabled(True)
+            # Expand with the combo so the clear (x) stays on the right edge.
+            le.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+    def set_placeholder(self, text):
+        if self.lineEdit() is not None:
+            self.lineEdit().setPlaceholderText(text)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._sync_line_edit_geometry()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._sync_line_edit_geometry()
+
+    def _sync_line_edit_geometry(self):
+        """Stretch the inner editor across the combo so trailing actions (clear) sit right."""
+        le = self.lineEdit()
+        if le is None:
+            return
+        margin = 8
+        height = self.height()
+        width = max(1, self.width() - self._DROPDOWN_WIDTH - margin)
+        le.setGeometry(margin, 0, width, height)
+
+    def current_data(self):
+        """Resolves itemData even when the user typed a matching label."""
+        index = self.currentIndex()
+        text = self.currentText().strip()
+        if index >= 0 and self.itemText(index) == text:
+            return self.itemData(index)
+
+        lowered = text.lower()
+        exact = []
+        partial = []
+        for i in range(self.count()):
+            label = self.itemText(i)
+            if label.lower() == lowered:
+                exact.append(i)
+            elif lowered and lowered in label.lower():
+                partial.append(i)
+        if len(exact) == 1:
+            self.setCurrentIndex(exact[0])
+            return self.itemData(exact[0])
+        if not exact and len(partial) == 1:
+            self.setCurrentIndex(partial[0])
+            return self.itemData(partial[0])
+        return None
+
+
 class StationFormDialog(QDialog):
     """Add/edit form for a single radio station. Returns a station dict via get_data()."""
 
@@ -870,29 +990,40 @@ class RadioSearchDialog(QDialog):
         layout.addWidget(self.status_label)
 
         filters = QHBoxLayout()
-        filters.setSpacing(8)
+        filters.setSpacing(10)
 
+        country_col = QVBoxLayout()
+        country_col.setSpacing(4)
         country_label = QLabel(t("online.country"), self)
-        filters.addWidget(country_label)
-
-        self.country_combo = QComboBox(self)
+        country_label.setObjectName("sectionLabel")
+        country_col.addWidget(country_label)
+        self.country_combo = SearchableComboBox(self, placeholder=t("online.country_ph"))
         self.country_combo.setEnabled(False)
-        self.country_combo.setMinimumWidth(160)
-        filters.addWidget(self.country_combo, 2)
+        self.country_combo.setMinimumWidth(200)
+        country_col.addWidget(self.country_combo)
+        filters.addLayout(country_col, 2)
 
+        genre_col = QVBoxLayout()
+        genre_col.setSpacing(4)
         genre_label = QLabel(t("online.genre"), self)
-        filters.addWidget(genre_label)
-
-        self.genre_combo = QComboBox(self)
+        genre_label.setObjectName("sectionLabel")
+        genre_col.addWidget(genre_label)
+        self.genre_combo = SearchableComboBox(self, placeholder=t("online.genre_ph"))
         self.genre_combo.setEnabled(False)
-        self.genre_combo.setMinimumWidth(140)
-        filters.addWidget(self.genre_combo, 2)
+        self.genre_combo.setMinimumWidth(180)
+        genre_col.addWidget(self.genre_combo)
+        filters.addLayout(genre_col, 2)
 
+        search_col = QVBoxLayout()
+        search_col.setSpacing(4)
+        search_col.addSpacing(16)  # align with the combo row under the labels
         self.search_btn = QPushButton(t("online.search"), self)
         self.search_btn.setObjectName("scanBtn")
         self.search_btn.setEnabled(False)
+        self.search_btn.setMinimumHeight(38)
         self.search_btn.clicked.connect(self.search)
-        filters.addWidget(self.search_btn)
+        search_col.addWidget(self.search_btn)
+        filters.addLayout(search_col)
         layout.addLayout(filters)
 
         self.list_widget = QListWidget(self)
@@ -922,10 +1053,11 @@ class RadioSearchDialog(QDialog):
 
     def _selected_genre(self):
         """The genre tag to send to the API, or an empty string for all genres."""
-        index = self.genre_combo.currentIndex()
-        if index < 0:
-            return ""
-        return self.genre_combo.itemData(index) or ""
+        data = self.genre_combo.current_data()
+        return data if data is not None else ""
+
+    def _selected_country_code(self):
+        return self.country_combo.current_data()
 
     def _start_job(self, fn, on_ok, on_fail):
         if self._job is not None and self._job.isRunning():
@@ -964,6 +1096,8 @@ class RadioSearchDialog(QDialog):
         has_countries = self.country_combo.count() > 0
         self.country_combo.setEnabled(has_countries)
         self.genre_combo.setEnabled(True)
+        self.country_combo.set_placeholder(t("online.country_ph"))
+        self.genre_combo.set_placeholder(t("online.genre_ph"))
         self.search_btn.setEnabled(has_countries)
         self.status_label.setText(t("online.ready"))
 
@@ -975,10 +1109,10 @@ class RadioSearchDialog(QDialog):
     def search(self):
         if self._job is not None and self._job.isRunning():
             return
-        index = self.country_combo.currentIndex()
-        if index < 0:
+        country_code = self._selected_country_code()
+        if not country_code:
+            self.status_label.setText(t("online.pick_country"))
             return
-        country_code = self.country_combo.itemData(index)
         tag = self._selected_genre() or None
 
         self.list_widget.clear()
