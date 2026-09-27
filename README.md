@@ -4,6 +4,20 @@ RadioChromecast is a desktop app that plays internet radio on Chromecast devices
 
 The interface is available in English and Romanian, with a light and a dark theme.
 
+## Interface
+
+The main window lists your stations, the Chromecast devices on the network, and the playback controls.
+
+![Main window in the dark theme. Radio Guerrilla is selected and a Chromecast named Living Room is connected.](docs/screenshots/main-dark.png)
+
+The same window in the light theme:
+
+![Main window in the light theme, with the same station selected.](docs/screenshots/main-light.png)
+
+Search online radio by country and genre, then add the stations you want:
+
+![Online search dialog showing pop stations in Romania, with one station checked.](docs/screenshots/online-search.png)
+
 ## Features
 
 - Discover Chromecast devices on the local network and reconnect to the last one
