@@ -3,7 +3,7 @@ import logging
 import pychromecast
 from i18n import t
 
-log = logging.getLogger('radiocast.cast')
+log = logging.getLogger('radiachromecast.cast')
 
 class ChromecastDiscoveryThread(QThread):
     """Background thread to discover Chromecast devices without freezing the UI."""

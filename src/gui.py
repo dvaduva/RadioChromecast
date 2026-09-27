@@ -19,11 +19,21 @@ from PyQt6.QtWidgets import (
 from metadata import MetadataFetcher
 import i18n
 from i18n import t
+from radio_browser import (
+    RadioBrowser,
+    genre_from_hit,
+    normalize_stream_url,
+    stream_url,
+    technical_label,
+    to_local_station,
+)
 
-log = logging.getLogger('radiocast.gui')
+log = logging.getLogger('radiachromecast.gui')
 
 # Shown in the About dialog and the window title hover.
 APP_VERSION = "1.0.0"
+# Fixed tile width used by StationCard and by the responsive grid calculator.
+STATION_CARD_WIDTH = 280
 
 def get_resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -62,10 +72,55 @@ _STYLE_TEMPLATE = Template("""
 QMainWindow {
     background-color: $window_bg;
 }
+QDialog, QMessageBox {
+    background-color: $panel_bg;
+    color: $text;
+}
 QWidget {
     color: $text;
     font-family: 'Segoe UI', -apple-system, sans-serif;
     font-size: 13px;
+}
+/* Form controls used in dialogs (and anywhere without a more specific rule) */
+QLineEdit, QPlainTextEdit, QComboBox {
+    background-color: $card_bg;
+    border: 1px solid $card_border;
+    border-radius: 6px;
+    padding: 6px 8px;
+    color: $text;
+    selection-background-color: #7c3aed;
+}
+QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus {
+    border: 1px solid #7c3aed;
+}
+QComboBox QAbstractItemView {
+    background-color: $card_bg;
+    color: $text;
+    border: 1px solid $card_border;
+    selection-background-color: #7c3aed;
+    selection-color: #ffffff;
+}
+QCheckBox {
+    color: $text;
+    spacing: 8px;
+}
+QListWidget {
+    background-color: $card_bg;
+    border: 1px solid $card_border;
+    border-radius: 8px;
+    color: $text;
+    outline: none;
+}
+QListWidget::item {
+    padding: 6px 8px;
+    border-radius: 4px;
+}
+QListWidget::item:hover {
+    background-color: $card_hover_bg;
+}
+QListWidget::item:selected {
+    background-color: #7c3aed;
+    color: #ffffff;
 }
 QFrame#sidebar {
     background-color: $panel_bg;
@@ -250,7 +305,7 @@ QPushButton#themeBtn {
     background-color: $btn_bg;
     border: 1px solid $btn_border;
     border-radius: 8px;
-    padding: 6px 12px;
+    padding: 4px 6px;
     color: $text;
 }
 QPushButton#themeBtn:hover {
@@ -441,6 +496,7 @@ class StationFormDialog(QDialog):
 
         self.setWindowTitle(t("form.title_edit") if self.is_edit else t("form.title_add"))
         self.setMinimumWidth(460)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.init_ui()
 
     def init_ui(self):
@@ -553,6 +609,7 @@ class StationManagerDialog(QDialog):
         self.window = window
         self.setWindowTitle(t("manager.title"))
         self.setMinimumSize(420, 480)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.init_ui()
         self.refresh_list()
 
@@ -645,6 +702,284 @@ class StationManagerDialog(QDialog):
             self.refresh_list()
 
 
+# Threads detached when the search dialog closes mid-request. Kept alive so Qt
+# does not destroy a QThread that is still running.
+_background_jobs = []
+
+
+class _BackgroundJob(QThread):
+    """Runs a callable off the UI thread and returns its result or an error string."""
+
+    succeeded = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, fn):
+        super().__init__()
+        self._fn = fn
+
+    def run(self):
+        try:
+            result = self._fn()
+        except Exception as e:
+            log.warning("Background job failed: %s", e)
+            self.failed.emit(str(e))
+            return
+        self.succeeded.emit(result)
+
+
+class RadioSearchDialog(QDialog):
+    """Search Radio Browser by country and genre, then append the checked stations."""
+
+    def __init__(self, window):
+        super().__init__(window)
+        self.window = window
+        self.client = RadioBrowser()
+        self._job = None
+        self._closed = False
+
+        self.setWindowTitle(t("online.title"))
+        self.setMinimumSize(680, 520)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.init_ui()
+        self._load_filters()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+
+        title = QLabel(t("online.title"), self)
+        title.setObjectName("appTitle")
+        layout.addWidget(title)
+
+        self.status_label = QLabel(t("online.loading_filters"), self)
+        self.status_label.setObjectName("helpNote")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+
+        filters = QHBoxLayout()
+        filters.setSpacing(8)
+
+        country_label = QLabel(t("online.country"), self)
+        filters.addWidget(country_label)
+
+        self.country_combo = QComboBox(self)
+        self.country_combo.setEnabled(False)
+        self.country_combo.setMinimumWidth(160)
+        filters.addWidget(self.country_combo, 2)
+
+        genre_label = QLabel(t("online.genre"), self)
+        filters.addWidget(genre_label)
+
+        self.genre_combo = QComboBox(self)
+        self.genre_combo.setEnabled(False)
+        self.genre_combo.setMinimumWidth(140)
+        filters.addWidget(self.genre_combo, 2)
+
+        self.search_btn = QPushButton(t("online.search"), self)
+        self.search_btn.setObjectName("scanBtn")
+        self.search_btn.setEnabled(False)
+        self.search_btn.clicked.connect(self.search)
+        filters.addWidget(self.search_btn)
+        layout.addLayout(filters)
+
+        self.list_widget = QListWidget(self)
+        self.list_widget.setObjectName("deviceList")
+        layout.addWidget(self.list_widget)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+        self.add_btn = QPushButton(t("online.add_selected"), self)
+        self.add_btn.setObjectName("scanBtn")
+        self.add_btn.clicked.connect(self.add_selected)
+        btn_row.addWidget(self.add_btn)
+        btn_row.addStretch()
+
+        close_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
+        close_box.button(QDialogButtonBox.StandardButton.Close).setText(t("common.close"))
+        close_box.rejected.connect(self.accept)
+        btn_row.addWidget(close_box)
+        layout.addLayout(btn_row)
+
+    def _existing_urls(self):
+        return {
+            normalize_stream_url(station.get("url"))
+            for station in self.window.stations
+            if normalize_stream_url(station.get("url"))
+        }
+
+    def _selected_genre(self):
+        """The genre tag to send to the API, or an empty string for all genres."""
+        index = self.genre_combo.currentIndex()
+        if index < 0:
+            return ""
+        return self.genre_combo.itemData(index) or ""
+
+    def _start_job(self, fn, on_ok, on_fail):
+        if self._job is not None and self._job.isRunning():
+            return
+        job = _BackgroundJob(fn)
+        job.succeeded.connect(on_ok)
+        job.failed.connect(on_fail)
+        self._job = job
+        job.start()
+
+    def _load_filters(self):
+        def job():
+            return self.client.countries(), self.client.tags()
+
+        self._start_job(job, self._on_filters_loaded, self._on_filters_failed)
+
+    def _on_filters_loaded(self, payload):
+        if self._closed:
+            return
+        countries, tags = payload
+        self.country_combo.clear()
+        romania_index = 0
+        for row in countries:
+            self.country_combo.addItem(row["name"], row["code"])
+            if row["code"] == "RO":
+                romania_index = self.country_combo.count() - 1
+        if self.country_combo.count():
+            self.country_combo.setCurrentIndex(romania_index)
+
+        self.genre_combo.clear()
+        self.genre_combo.addItem(t("online.all_genres"), "")
+        for tag in tags:
+            label = tag[:1].upper() + tag[1:] if tag.islower() else tag
+            self.genre_combo.addItem(label, tag)
+
+        has_countries = self.country_combo.count() > 0
+        self.country_combo.setEnabled(has_countries)
+        self.genre_combo.setEnabled(True)
+        self.search_btn.setEnabled(has_countries)
+        self.status_label.setText(t("online.ready"))
+
+    def _on_filters_failed(self, error):
+        if self._closed:
+            return
+        self.status_label.setText(t("online.load_failed", error=error))
+
+    def search(self):
+        if self._job is not None and self._job.isRunning():
+            return
+        index = self.country_combo.currentIndex()
+        if index < 0:
+            return
+        country_code = self.country_combo.itemData(index)
+        tag = self._selected_genre() or None
+
+        self.list_widget.clear()
+        self.search_btn.setEnabled(False)
+        self.search_btn.setText(t("online.searching"))
+        self.status_label.setText(t("online.searching"))
+
+        def job():
+            return self.client.search_stations(country_code, tag=tag)
+
+        self._start_job(job, self._on_search_done, self._on_search_failed)
+
+    def _finish_search_button(self):
+        self.search_btn.setText(t("online.search"))
+        self.search_btn.setEnabled(self.country_combo.count() > 0)
+
+    def _on_search_done(self, hits):
+        if self._closed:
+            return
+        self._finish_search_button()
+        self._fill_results(hits)
+        if hits:
+            self.status_label.setText(t("online.found", count=len(hits)))
+        else:
+            self.status_label.setText(t("online.none_found"))
+
+    def _on_search_failed(self, error):
+        if self._closed:
+            return
+        self._finish_search_button()
+        self.status_label.setText(t("online.search_failed", error=error))
+
+    def _fill_results(self, hits):
+        self.list_widget.clear()
+        saved = self._existing_urls()
+        selected_genre = self._selected_genre()
+        for hit in hits:
+            url = normalize_stream_url(stream_url(hit))
+            already = url in saved
+            name = (hit.get("name") or "").strip() or t("manager.no_name")
+            genre = genre_from_hit(hit, selected_genre, t("common.general"))
+            tech = technical_label(hit)
+            label = f"{name}  —  {genre}"
+            if tech:
+                label += f"  ·  {tech}"
+            if already:
+                label += f"  ({t('online.already_added')})"
+
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, hit)
+            if already:
+                item.setFlags(Qt.ItemFlag.NoItemFlags)
+            else:
+                item.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled
+                    | Qt.ItemFlag.ItemIsSelectable
+                    | Qt.ItemFlag.ItemIsUserCheckable
+                )
+                item.setCheckState(Qt.CheckState.Unchecked)
+            self.list_widget.addItem(item)
+
+    def add_selected(self):
+        existing_ids = {station["id"] for station in self.window.stations}
+        existing_urls = set(self._existing_urls())
+        selected_genre = self._selected_genre()
+        general = t("common.general")
+        chosen = []
+
+        for row in range(self.list_widget.count()):
+            item = self.list_widget.item(row)
+            if not (item.flags() & Qt.ItemFlag.ItemIsUserCheckable):
+                continue
+            if item.checkState() != Qt.CheckState.Checked:
+                continue
+            hit = item.data(Qt.ItemDataRole.UserRole) or {}
+            url = normalize_stream_url(stream_url(hit))
+            if not url or url in existing_urls:
+                continue
+            station = to_local_station(hit, existing_ids, selected_genre, general)
+            if station is None:
+                continue
+            existing_urls.add(normalize_stream_url(station["url"]))
+            chosen.append(station)
+
+        if not chosen:
+            self.status_label.setText(t("online.none_selected"))
+            return
+
+        self.window.add_stations(chosen)
+        self._fill_results([
+            self.list_widget.item(row).data(Qt.ItemDataRole.UserRole)
+            for row in range(self.list_widget.count())
+        ])
+        self.status_label.setText(t("online.added", count=len(chosen)))
+
+    def closeEvent(self, event):
+        self._closed = True
+        job = self._job
+        self._job = None
+        if job is not None:
+            for signal in (job.succeeded, job.failed):
+                try:
+                    signal.disconnect()
+                except TypeError:
+                    pass
+            if job.isRunning():
+                _background_jobs.append(job)
+                job.finished.connect(
+                    lambda j=job: _background_jobs.remove(j) if j in _background_jobs else None
+                )
+        super().closeEvent(event)
+
+
 class AboutDialog(QDialog):
     """Simple 'About' window: app branding, version, description and credits."""
 
@@ -652,6 +987,8 @@ class AboutDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(t("about.title"))
         self.setMinimumWidth(420)
+        # Ensure QSS background paints on the dialog surface (Windows).
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.init_ui(app_icon)
 
     def init_ui(self, app_icon):
@@ -666,7 +1003,7 @@ class AboutDialog(QDialog):
             logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(logo)
 
-        name = QLabel("RadioCast", self)
+        name = QLabel("Radio Chromecast", self)
         name.setObjectName("appTitle")
         name.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(name)
@@ -721,7 +1058,7 @@ class StationCard(QFrame):
         self.setProperty("selected", "false")
         # Keep a constant tile width so cards never stretch to fill the row,
         # even when a single station is shown.
-        self.setFixedWidth(280)
+        self.setFixedWidth(STATION_CARD_WIDTH)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
 
         self.init_ui()
@@ -857,6 +1194,9 @@ class MainWindow(QMainWindow):
         self.card_widgets = {}
         self.downloaders = []
         self.metadata_fetcher = None
+        # Responsive grid: column count follows the scroll-area width.
+        self._grid_columns = 3
+        self._card_width = STATION_CARD_WIDTH
         # Recently played history: newest first, capped at MAX_RECENT. Each entry
         # is {'title', 'station', 'time'} so we can show relative timestamps.
         self.recent_entries = []
@@ -920,7 +1260,7 @@ class MainWindow(QMainWindow):
         header_layout = QVBoxLayout()
         header_layout.setSpacing(10)
 
-        self.app_title = QLabel("RadioCast", self)
+        self.app_title = QLabel("Radio Chromecast", self)
         self.app_title.setObjectName("appTitle")
         header_layout.addWidget(self.app_title)
 
@@ -932,7 +1272,7 @@ class MainWindow(QMainWindow):
         # About button (ⓘ) — opens the About dialog
         self.about_btn = QPushButton("ⓘ", self)
         self.about_btn.setObjectName("themeBtn")
-        self.about_btn.setFixedSize(34, 30)
+        self.about_btn.setFixedSize(42, 36)
         self.about_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.about_btn.setToolTip(t("about.tooltip"))
         controls_row.addWidget(self.about_btn)
@@ -940,7 +1280,7 @@ class MainWindow(QMainWindow):
         # Language toggle button (RO / EN)
         self.lang_btn = QPushButton(self)
         self.lang_btn.setObjectName("themeBtn")
-        self.lang_btn.setFixedSize(40, 30)
+        self.lang_btn.setFixedSize(48, 36)
         self.lang_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.update_lang_button()
         controls_row.addWidget(self.lang_btn)
@@ -948,7 +1288,7 @@ class MainWindow(QMainWindow):
         # Theme toggle button
         self.theme_btn = QPushButton(self)
         self.theme_btn.setObjectName("themeBtn")
-        self.theme_btn.setFixedSize(34, 30)
+        self.theme_btn.setFixedSize(42, 36)
         self.theme_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.update_theme_button()
         controls_row.addWidget(self.theme_btn)
@@ -1056,6 +1396,13 @@ class MainWindow(QMainWindow):
         self.fav_filter_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         search_layout.addWidget(self.fav_filter_btn)
 
+        # Search the public radio directory and import selected stations
+        self.online_btn = QPushButton(t("content.online"), self)
+        self.online_btn.setObjectName("scanBtn")
+        self.online_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.online_btn.setToolTip(t("content.online_tooltip"))
+        search_layout.addWidget(self.online_btn)
+
         # Open the CRUD manager for radio stations
         self.manage_btn = QPushButton(t("content.manage"), self)
         self.manage_btn.setObjectName("scanBtn")
@@ -1066,8 +1413,8 @@ class MainWindow(QMainWindow):
         content_layout.addLayout(search_layout)
 
         # Scroll Area for station cards
-        scroll_area = QScrollArea(self)
-        scroll_area.setWidgetResizable(True)
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
         
         self.scroll_content = QWidget()
         self.scroll_content.setObjectName("scrollContent")
@@ -1078,8 +1425,8 @@ class MainWindow(QMainWindow):
         # Populate radio stations grid
         self.populate_grid(self.stations)
         
-        scroll_area.setWidget(self.scroll_content)
-        content_layout.addWidget(scroll_area)
+        self.scroll_area.setWidget(self.scroll_content)
+        content_layout.addWidget(self.scroll_area)
 
         upper_layout.addWidget(content_widget)
 
@@ -1216,12 +1563,41 @@ class MainWindow(QMainWindow):
     def sorted_stations(self):
         return sorted(self.stations, key=self._sort_key)
 
+    def calc_grid_columns(self):
+        """How many fixed-width cards fit in the current scroll-area viewport."""
+        spacing = self.grid_layout.spacing()
+        margins = self.grid_layout.contentsMargins()
+        available = self.scroll_area.viewport().width()
+        available -= margins.left() + margins.right()
+        # Small safety margin so a near-fit row does not clip / force a scrollbar.
+        available = max(0, available - 4)
+        cell = self._card_width + spacing
+        return max(1, (available + spacing) // cell) if cell > 0 else 1
+
+    def update_grid_columns(self):
+        """Reflow the grid when the window width changes the column count."""
+        if not hasattr(self, 'scroll_area') or not self.card_widgets:
+            return
+        columns = self.calc_grid_columns()
+        if columns != self._grid_columns:
+            self._grid_columns = columns
+            self.reflow_grid()
+
+    def _apply_column_stretch(self, columns):
+        """Reset stretches, then let a trailing empty column absorb leftover width."""
+        for c in range(max(self.grid_layout.columnCount(), columns) + 1):
+            self.grid_layout.setColumnStretch(c, 0)
+        self.grid_layout.setColumnStretch(columns, 1)
+
     def populate_grid(self, stations):
         # Clear existing layout items
         for i in reversed(range(self.grid_layout.count())):
-            self.grid_layout.itemAt(i).widget().setParent(None)
+            widget = self.grid_layout.itemAt(i).widget()
+            if widget is not None:
+                widget.setParent(None)
 
-        columns = 3
+        self._grid_columns = self.calc_grid_columns()
+        columns = self._grid_columns
         for idx, station in enumerate(self.sorted_stations()):
             row = idx // columns
             col = idx % columns
@@ -1242,7 +1618,7 @@ class MainWindow(QMainWindow):
 
         # Trailing spacer column absorbs leftover width so fixed-width cards
         # stay left-aligned instead of stretching across the row.
-        self.grid_layout.setColumnStretch(columns, 1)
+        self._apply_column_stretch(columns)
 
     def reflow_grid(self):
         """Re-positions existing cards in sorted order without recreating them."""
@@ -1250,14 +1626,23 @@ class MainWindow(QMainWindow):
         while self.grid_layout.count():
             self.grid_layout.takeAt(0)
 
-        columns = 3
+        columns = self._grid_columns
         for idx, station in enumerate(self.sorted_stations()):
             card = self.card_widgets.get(station['id'])
             if card is not None:
                 self.grid_layout.addWidget(card, idx // columns, idx % columns)
 
         # Keep trailing spacer column so cards remain left-aligned, fixed width.
-        self.grid_layout.setColumnStretch(columns, 1)
+        self._apply_column_stretch(columns)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.update_grid_columns()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Viewport width is reliable only after the first show/layout pass.
+        QTimer.singleShot(0, self.update_grid_columns)
 
     def on_logo_downloaded(self, station_id, image_data):
         pixmap = QPixmap()
@@ -1276,7 +1661,8 @@ class MainWindow(QMainWindow):
         self.search_input.textChanged.connect(self.apply_filters)
         self.fav_filter_btn.toggled.connect(self.apply_filters)
 
-        # Station manager (CRUD)
+        # Online directory search, then the local station manager (CRUD)
+        self.online_btn.clicked.connect(self.open_radio_search)
         self.manage_btn.clicked.connect(self.open_station_manager)
 
         # Scan and connect
@@ -1687,7 +2073,7 @@ class MainWindow(QMainWindow):
                     with open(path, 'r', encoding='utf-8') as f:
                         favorite_ids = json.load(f)
                 except Exception as e:
-                    print(f"[RadioCast] Eroare la citirea favoritelor: {e}")
+                    print(f"[Radio Chromecast] Eroare la citirea favoritelor: {e}")
                     favorite_ids = []
             else:
                 favorite_ids = []
@@ -1713,6 +2099,10 @@ class MainWindow(QMainWindow):
         """Opens the dialog for adding, editing and deleting radio stations."""
         StationManagerDialog(self).exec()
 
+    def open_radio_search(self):
+        """Opens the online directory search and imports the stations the user checks."""
+        RadioSearchDialog(self).exec()
+
     def open_about(self):
         """Opens the About dialog with app info and credits."""
         AboutDialog(self, app_icon=self.app_icon).exec()
@@ -1732,13 +2122,20 @@ class MainWindow(QMainWindow):
             with open(self.stations_path, 'w', encoding='utf-8') as f:
                 json.dump(payload, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            print(f"[RadioCast] Eroare la salvarea stations.json: {e}")
+            print(f"[Radio Chromecast] Eroare la salvarea stations.json: {e}")
             QMessageBox.warning(self, t("common.error"), t("error.save_stations_failed", error=e))
 
     def add_station(self, data):
         """Adds a new station (mutating the shared list in place so the proxy sees it)."""
-        data.setdefault('favorite', False)
-        self.stations.append(data)
+        self.add_stations([data])
+
+    def add_stations(self, stations):
+        """Appends several stations, then saves stations.json and rebuilds the grid once."""
+        if not stations:
+            return
+        for data in stations:
+            data.setdefault('favorite', False)
+            self.stations.append(data)
         self.save_stations()
         self.rebuild_stations_grid()
 
@@ -1868,6 +2265,8 @@ class MainWindow(QMainWindow):
         # Content header
         self.search_input.setPlaceholderText(t("content.search_ph"))
         self.fav_filter_btn.setText(t("content.fav_filter"))
+        self.online_btn.setText(t("content.online"))
+        self.online_btn.setToolTip(t("content.online_tooltip"))
         self.manage_btn.setText(t("content.manage"))
         self.manage_btn.setToolTip(t("content.manage_tooltip"))
 
@@ -1912,7 +2311,7 @@ class MainWindow(QMainWindow):
             with open(config_path, 'w', encoding='utf-8') as f:
                 json.dump(self.config, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            print(f"[RadioCast] Eroare la salvarea config.json: {e}")
+            print(f"[Radio Chromecast] Eroare la salvarea config.json: {e}")
 
     # --- Proxy port ---
 

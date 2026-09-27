@@ -5,7 +5,7 @@ import logging
 import requests
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
-log = logging.getLogger('radiocast.proxy')
+log = logging.getLogger('radiachromecast.proxy')
 
 def get_local_ip(target='10.254.254.254'):
     """Detects the local IP address the OS would use to reach ``target``.

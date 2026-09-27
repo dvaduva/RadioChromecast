@@ -26,7 +26,7 @@ def setup_logging(base_dir):
         file_handler.suffix = '%Y-%m-%d'
         handlers.append(file_handler)
     except Exception as e:
-        print(f"[RadioCast] Nu s-a putut crea fisierul de log ({log_path}): {e}")
+        print(f"[Radio Chromecast] Nu s-a putut crea fisierul de log ({log_path}): {e}")
 
     logging.basicConfig(
         level=logging.DEBUG,
@@ -38,7 +38,7 @@ def setup_logging(base_dir):
     logging.getLogger('zeroconf').setLevel(logging.INFO)
     logging.getLogger('urllib3').setLevel(logging.INFO)
 
-    log = logging.getLogger('radiocast')
+    log = logging.getLogger('radiachromecast')
     log.info('=' * 60)
     log.info('Sesiune noua. Log: %s', log_path)
     return log_path
@@ -67,9 +67,9 @@ def load_config(base_dir):
         try:
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(DEFAULT_CONFIG, f, indent=2, ensure_ascii=False)
-            print(f"[RadioCast] S-a creat fisierul de configurare implicit: {path}")
+            print(f"[Radio Chromecast] S-a creat fisierul de configurare implicit: {path}")
         except Exception as e:
-            print(f"[RadioCast] Eroare la crearea config.json: {e}")
+            print(f"[Radio Chromecast] Eroare la crearea config.json: {e}")
         return dict(DEFAULT_CONFIG)
 
     try:
@@ -80,7 +80,7 @@ def load_config(base_dir):
         config.update(data)
         return config
     except Exception as e:
-        print(f"[RadioCast] Eroare la citirea config.json, se folosesc valorile implicite: {e}")
+        print(f"[Radio Chromecast] Eroare la citirea config.json, se folosesc valorile implicite: {e}")
         return dict(DEFAULT_CONFIG)
 
 def resolve_proxy_port(config):
@@ -93,7 +93,7 @@ def resolve_proxy_port(config):
         return port
     except (TypeError, ValueError):
         fallback = DEFAULT_CONFIG['proxy_port']
-        print(f"[RadioCast] Port proxy invalid in config.json ('{raw}'). Se foloseste {fallback}.")
+        print(f"[Radio Chromecast] Port proxy invalid in config.json ('{raw}'). Se foloseste {fallback}.")
         return fallback
 
 def get_stations_filepath(base_dir):
@@ -107,16 +107,16 @@ def get_stations_filepath(base_dir):
             try:
                 import shutil
                 shutil.copy2(docs_path, path)
-                print(f"[RadioCast] S-a migrat stations.json din docs/ in radacina: {path}")
+                print(f"[Radio Chromecast] S-a migrat stations.json din docs/ in radacina: {path}")
             except Exception as e:
-                print(f"[RadioCast] Eroare la migrarea stations.json: {e}")
+                print(f"[Radio Chromecast] Eroare la migrarea stations.json: {e}")
                 return docs_path
                 
     return path
 
 def load_stations(filepath):
     """Loads and returns the radio stations list from the given stations.json path."""
-    print(f"[RadioCast] Se incarca posturile de radio din: {filepath}")
+    print(f"[Radio Chromecast] Se incarca posturile de radio din: {filepath}")
     
     if not os.path.exists(filepath):
         # Create empty template if file does not exist
@@ -126,7 +126,7 @@ def load_stations(filepath):
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(default_data, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            print(f"[RadioCast] Eroare la crearea fisierului implicit: {e}")
+            print(f"[Radio Chromecast] Eroare la crearea fisierului implicit: {e}")
         return []
 
     try:
@@ -134,7 +134,7 @@ def load_stations(filepath):
             data = json.load(f)
             return data.get('stations', [])
     except Exception as e:
-        print(f"[RadioCast] Eroare la citirea fisierului de configurare: {e}")
+        print(f"[Radio Chromecast] Eroare la citirea fisierului de configurare: {e}")
         return []
 
 def main():
@@ -152,17 +152,17 @@ def main():
     stations_path = get_stations_filepath(base_dir)
     stations = load_stations(stations_path)
     if not stations:
-        print("[RadioCast] Avertisment: Lista de posturi radio este goala sau invalida!")
+        print("[Radio Chromecast] Avertisment: Lista de posturi radio este goala sau invalida!")
 
     # 2. Start local Proxy Server on the configured port (auto-increments if taken)
     proxy_server = RadioProxyServer(stations, port=proxy_port)
     try:
         proxy_server.start()
         if proxy_server.port != proxy_port:
-            print(f"[RadioCast] Portul {proxy_port} era ocupat; proxy-ul foloseste portul {proxy_server.port}.")
-        print(f"[RadioCast] Serverul proxy local ruleaza la adresa: http://{proxy_server.ip}:{proxy_server.port}")
+            print(f"[Radio Chromecast] Portul {proxy_port} era ocupat; proxy-ul foloseste portul {proxy_server.port}.")
+        print(f"[Radio Chromecast] Serverul proxy local ruleaza la adresa: http://{proxy_server.ip}:{proxy_server.port}")
     except Exception as e:
-        print(f"[RadioCast] Nu s-a putut porni serverul proxy: {e}")
+        print(f"[Radio Chromecast] Nu s-a putut porni serverul proxy: {e}")
         sys.exit(1)
 
     # 3. Launch PyQt6 GUI Application
@@ -174,7 +174,7 @@ def main():
             import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("RadioChromecast")
         except Exception as e:
-            print(f"[RadioCast] Nu s-a putut seta AppUserModelID: {e}")
+            print(f"[Radio Chromecast] Nu s-a putut seta AppUserModelID: {e}")
 
     app = QApplication(sys.argv)
     app.setApplicationName("RadioChromecast")
@@ -189,10 +189,10 @@ def main():
     try:
         exit_code = app.exec()
     finally:
-        print("[RadioCast] Se opresc serviciile...")
+        print("[Radio Chromecast] Se opresc serviciile...")
         cast_controller.shutdown()
         proxy_server.stop()
-        print("[RadioCast] La revedere!")
+        print("[Radio Chromecast] La revedere!")
         
     sys.exit(exit_code)
 

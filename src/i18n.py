@@ -35,7 +35,7 @@ def load_translations():
             with open(path, "r", encoding="utf-8") as f:
                 _translations[lang] = json.load(f)
         except Exception as e:
-            print(f"[RadioCast] Nu s-a putut incarca traducerea '{lang}': {e}")
+            print(f"[Radio Chromecast] Nu s-a putut incarca traducerea '{lang}': {e}")
             _translations[lang] = {}
 
 
